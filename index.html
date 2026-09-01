@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Voxelcraft</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<canvas id="gl"></canvas>
+
+<div id="underwater"></div>
+<div id="hurt"></div>
+<div id="portalfx"></div>
+
+<div id="hud">
+  <div id="bossbar"><div id="bossname">Ender Dragon</div><div class="bosstrack"><div id="bossfill"></div></div></div>
+  <div id="crosshair"></div>
+  <div id="debug" class="hidden"></div>
+  <div id="toast"></div>
+  <div id="bottom">
+    <div id="blockname"></div>
+    <div id="airbar"></div>
+    <div id="stats">
+      <div id="armorbar"></div>
+      <div id="hearts"></div>
+    </div>
+    <div id="hotbar"></div>
+  </div>
+</div>
+
+<div id="inventory">
+  <div class="panel mc-window">
+    <aside class="mc-book">
+      <h3>Recipe book <input id="recipe-filter" type="text" placeholder="filter…" autocomplete="off"></h3>
+      <div id="craft-recipes" class="recipes"></div>
+    </aside>
+
+    <div class="mc-main">
+      <div class="mc-head">
+        <h2 id="craft-title">Inventory</h2>
+        <p class="hint" id="craft-hint">Click a tool to hold it, armour to wear it.</p>
+      </div>
+
+      <div class="mc-top">
+        <div class="mc-armour">
+          <div class="mc-label">Armour</div>
+          <div id="armour-slots"></div>
+        </div>
+        <div class="mc-doll" aria-hidden="true">
+          <div class="doll-part" data-slot="head"></div>
+          <div class="doll-part" data-slot="chest"></div>
+          <div class="doll-part" data-slot="legs"></div>
+          <div class="doll-part" data-slot="feet"></div>
+          <span class="sub2" id="armour-points">no armour</span>
+        </div>
+        <div class="mc-craft">
+          <div class="mc-label">Crafting</div>
+          <div class="mc-bench">
+            <div id="craft-grid"></div>
+            <div class="craft-arrow">&rarr;</div>
+            <div id="craft-out" class="mcslot out"></div>
+          </div>
+          <button id="craft-clear">Clear</button>
+        </div>
+      </div>
+
+      <div class="mc-label">Inventory <span class="sub2" id="mat-hint">click a tool to hold it &middot; click armour to wear it &middot; shift-click anything to the hotbar</span></div>
+      <div id="craft-mats" class="mc-grid"></div>
+
+      <div class="mc-label">Hotbar</div>
+      <div id="hotbar-slots" class="mc-grid mc-hotbar"></div>
+
+      <div class="creative-only">
+        <div class="mc-label">Creative catalogue
+          <span class="sub2">everything in the game &middot; click for one into slot <span id="slotnum">1</span> &middot; shift-click for ten</span></div>
+        <div id="palette-tabs" class="chips"></div>
+        <div id="invgrid" class="mc-grid mc-scroll"></div>
+      </div>
+      <p class="mc-note survival-only">Survival: no endless block list. Mine what you want to build with, and placing a block spends it.</p>
+    </div>
+  </div>
+</div>
+
+<div id="menu" class="overlay">
+  <div class="panel home">
+    <h1>Voxelcraft</h1>
+    <p class="sub">An infinite block world, built from scratch in WebGL.</p>
+
+    <div class="tabs" role="tablist">
+      <button class="tab active" data-tab="play">Play</button>
+      <button class="tab" data-tab="settings">Settings</button>
+      <button class="tab" data-tab="controls">Controls</button>
+    </div>
+
+    <section class="tab-page" data-page="play">
+      <div class="modes">
+        <button class="mode-card active" data-mode="creative">
+          <b>Creative</b>
+          <span>Fly, build from an endless supply, and nothing can hurt you.</span>
+        </button>
+        <button class="mode-card" data-mode="survival">
+          <b>Survival</b>
+          <span>No flying. Mine what you build with, and mind your health.</span>
+        </button>
+      </div>
+      <button id="play" class="primary">Play</button>
+      <div class="menu-buttons">
+        <button id="savebtn">Save world</button>
+        <button id="newworld">New world</button>
+      </div>
+      <p class="foot">The world is saved to this browser automatically.</p>
+    </section>
+
+    <section class="tab-page" data-page="settings" hidden>
+      <div class="setting">
+        <label for="set-view">Render distance</label>
+        <input id="set-view" type="range" min="4" max="12" step="1">
+        <output id="out-view"></output>
+      </div>
+      <div class="setting">
+        <label for="set-fov">Field of view</label>
+        <input id="set-fov" type="range" min="55" max="100" step="1">
+        <output id="out-fov"></output>
+      </div>
+      <div class="setting">
+        <label for="set-sens">Mouse sensitivity</label>
+        <input id="set-sens" type="range" min="30" max="250" step="5">
+        <output id="out-sens"></output>
+      </div>
+      <div class="setting">
+        <label for="set-vol">Volume</label>
+        <input id="set-vol" type="range" min="0" max="100" step="5">
+        <output id="out-vol"></output>
+      </div>
+      <div class="setting">
+        <label for="set-day">Day length</label>
+        <input id="set-day" type="range" min="120" max="1800" step="60">
+        <output id="out-day"></output>
+      </div>
+      <div class="setting">
+        <label for="set-seed">Seed for the next world</label>
+        <input id="set-seed" type="text" placeholder="leave blank for random" autocomplete="off">
+        <output></output>
+      </div>
+      <p class="foot">Settings are kept in this browser. Render distance changes take effect as you move.</p>
+    </section>
+
+    <section class="tab-page" data-page="controls" hidden>
+      <div class="controls">
+        <div><kbd>&larr;</kbd><kbd>&uarr;</kbd><kbd>&darr;</kbd><kbd>&rarr;</kbd><span>Move</span></div>
+        <div><kbd>Mouse</kbd><span>Look around</span></div>
+        <div><kbd>Space</kbd><span>Jump &middot; double-tap to fly</span></div>
+        <div><kbd>Shift</kbd><span>Sneak &middot; descend while flying</span></div>
+        <div><kbd>S</kbd><span>Sprint</span></div>
+        <div><kbd>M</kbd> / <kbd>Left click</kbd><span>Break block &middot; attack</span></div>
+        <div><kbd>P</kbd> / <kbd>Right click</kbd><span>Place &middot; use &middot; eat</span></div>
+        <div><kbd>Middle click</kbd><span>Pick block</span></div>
+        <div><kbd>1</kbd>&ndash;<kbd>9</kbd> / <kbd>Wheel</kbd><span>Select slot</span></div>
+        <div><kbd>E</kbd><span>Inventory &amp; crafting</span></div>
+        <div><kbd>P</kbd> on a table<span>Open the 3&times;3 grid</span></div>
+        <div><kbd>F</kbd><span>Toggle flight (creative)</span></div>
+        <div><kbd>T</kbd> / <kbd>N</kbd><span>Freeze time / skip 12h</span></div>
+        <div><kbd>F3</kbd><span>Debug overlay</span></div>
+        <div><kbd>Esc</kbd><span>Back to this screen</span></div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<div id="trading">
+  <div class="panel trade-panel">
+    <div class="mc-head">
+      <h2 id="trade-title">Villager</h2>
+      <p class="hint">Click a deal to make it &middot; <kbd>Esc</kbd> to step away</p>
+    </div>
+    <div class="trade-purse">You have <b id="trade-emeralds">0</b> emeralds</div>
+    <div id="trade-list"></div>
+  </div>
+</div>
+
+<div id="chest">
+  <div class="panel mc-window chest-window">
+    <div class="mc-main">
+      <div class="mc-head">
+        <h2>Chest</h2>
+        <p class="hint">Click to take &middot; click your own to store &middot; <kbd>Esc</kbd> to close</p>
+      </div>
+      <div class="mc-label">Inside</div>
+      <div id="chest-slots" class="mc-grid"></div>
+      <div class="mc-label">Yours</div>
+      <div id="chest-inv" class="mc-grid mc-scroll"></div>
+    </div>
+  </div>
+</div>
+
+<div id="furnace">
+  <div class="panel trade-panel">
+    <div class="mc-head">
+      <h2>Furnace</h2>
+      <p class="hint">Burns fuel to smelt one thing into another &middot; <kbd>Esc</kbd> to close</p>
+    </div>
+    <div class="trade-purse">Fuel on hand: <b id="furnace-fuel">none</b></div>
+    <div id="furnace-list"></div>
+  </div>
+</div>
+
+<div id="died" class="overlay hidden">
+  <div class="panel">
+    <h1>You died</h1>
+    <p class="sub" id="died-reason"></p>
+    <button id="respawn" class="primary">Respawn</button>
+  </div>
+</div>
+
+<div id="loading" class="overlay">
+  <div class="panel">
+    <h1>Voxelcraft</h1>
+    <p class="sub">Generating terrain&hellip;</p>
+    <div class="bar"><div id="loadbar"></div></div>
+  </div>
+</div>
+
+<script src="js/math.js"></script>
+<script src="js/noise.js"></script>
+<script src="js/blocks.js"></script>
+<script src="js/items.js"></script>
+<script src="js/world.js"></script>
+<script src="js/mesher.js"></script>
+<script src="js/crafting.js"></script>
+<script src="js/trading.js"></script>
+<script src="js/fluid.js"></script>
+<script src="js/portal.js"></script>
+<script src="js/drops.js"></script>
+<script src="js/entities.js"></script>
+<script src="js/renderer.js"></script>
+<script src="js/player.js"></script>
+<script src="js/sound.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
