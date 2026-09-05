@@ -23,6 +23,10 @@ const Settings = {
     if (key === 'volume' && Sound.master) Sound.master.gain.value = value / 100;
   },
 };
+// The modes that take you out of your world and into an arena of their own.
+let ARENA_MODES = {};
+function defineArenas() { ARENA_MODES = { bedwars: bwMode('classic'), rush: bwMode('rush'), hunger: Hunger }; }
+
 const VIEW_DIST = 8;              // chunks in each direction
 const DAY_LENGTH = 600;           // seconds for a full day/night cycle
 
@@ -61,7 +65,10 @@ const Game = {
     buildBlocks();
     defineItems();
     defineAnimals();
+    defineBots();
+    defineTributes();
     buildMobSkins();
+    defineArenas();
     defineRecipes();
     defineTrades();
     defineSmelting();
@@ -91,6 +98,9 @@ const Game = {
       overworld: new World(seed),
       nether: new World((seed ^ 0x5eed5eed) | 0, 'nether'),
       end: new World((seed ^ 0x3e4d11) | 0, 'end'),
+      bedwars: new World(1, 'bedwars'),
+      rush: new World(2, 'rush'),
+      hunger: new World((seed ^ 0x11a6e2) | 0, 'hunger'),
     };
     if (save) for (const [k, v] of save.edits) this.worlds.overworld.edits.set(k, v);
     if (save && save.netherEdits) for (const [k, v] of save.netherEdits) this.worlds.nether.edits.set(k, v);
@@ -120,7 +130,7 @@ const Game = {
       if (save.chests) this.worlds.overworld.chests = new Map(save.chests);
       if (save.hp) this.player.hp = save.hp;
       if (save.slot != null) this.slot = save.slot;
-      if (save.mode) this.mode = save.mode;
+      if (save.mode) this.mode = ARENA_MODES[save.mode] ? 'creative' : save.mode;
     } else {
       let y = CY - 1;
       while (y > 0 && !isSolid(this.world.getBlock(sx, y, sz))) y--;
@@ -228,7 +238,8 @@ const Game = {
         const n = +e.code.slice(5);
         if (n >= 1 && n <= 9) this.selectSlot(n - 1);
       } else if (e.code === 'KeyE') {
-        if (this.chestAt) this.closeChest();
+        if (this.shopOpen) this.closeShop();
+        else if (this.chestAt) this.closeChest();
         else if (this.trading) this.closeTrading();
         else if (this.furnaceOpen) this.closeFurnace();
         else this.toggleInventory();
@@ -238,7 +249,8 @@ const Game = {
       else if (e.code === 'KeyT') { this.timeFlow = !this.timeFlow; this.toast(this.timeFlow ? 'Time flowing' : 'Time frozen'); }
       else if (e.code === 'KeyN') { this.time = (this.time + 0.5) % 1; this.toast('Time skipped'); }
       else if (e.code === 'Escape') {
-        if (this.chestAt) this.closeChest();
+        if (this.shopOpen) this.closeShop();
+        else if (this.chestAt) this.closeChest();
         else if (this.furnaceOpen) this.closeFurnace();
         else if (this.trading) this.closeTrading();
         else if (this.inventoryOpen) this.closeCrafting();
@@ -320,6 +332,16 @@ const Game = {
       location.reload();
     });
     document.getElementById('savebtn').addEventListener('click', () => this.save());
+    document.getElementById('arenaend-again').addEventListener('click', () => {
+      document.getElementById('arenaend').classList.add('hidden');
+      this.enterMatch(this.mode);
+      const p = this.canvas.requestPointerLock();
+      if (p && p.catch) p.catch(() => { this.paused = false; });
+    });
+    document.getElementById('arenaend-leave').addEventListener('click', () => {
+      document.getElementById('arenaend').classList.add('hidden');
+      this.setMode('creative');
+    });
   },
 
   // Pointer lock is unavailable in some embeds; play with click-drag instead.
@@ -341,7 +363,9 @@ const Game = {
   // Creative: fly, build from thin air, take no damage.
   // Survival: your hands, your stock, your health.
   setMode(mode, quiet) {
-    this.mode = mode === 'survival' ? 'survival' : 'creative';
+    const was = this.mode;
+    this.mode = ARENA_MODES[mode] || mode === 'survival' ? mode : 'creative';
+    if (ARENA_MODES[was] && this.mode !== was) this.leaveMatch();
     const creative = this.mode === 'creative';
     this.player.invulnerable = creative;
     if (!creative && this.player.flying) this.player.flying = false;
@@ -352,7 +376,134 @@ const Game = {
     }
     this._hudHp = null;
     this.updateHotbarUI();
+    if (ARENA_MODES[this.mode] && was !== this.mode) { this.enterMatch(this.mode); return; }
     if (!quiet) this.toast(creative ? 'Creative mode' : 'Survival mode');
+  },
+
+  // Blocks are spent everywhere except creative.
+  survivalRules() { return this.mode !== 'creative'; },
+
+  // ---- Bed Wars --------------------------------------------------------
+  // Starting a match parks the overworld where it stands and drops you into the
+  // arena; leaving puts you back exactly where you were.
+  enterMatch(kind) {
+    kind = kind || this.mode;
+    const arena = ARENA_MODES[kind];
+    if (!arena) return;
+    if (!ARENA_MODES[this.dimension]) {
+      // A match is a place you visit: what you were carrying waits for you at home.
+      this.homePos = {
+        dimension: this.dimension, pos: this.player.pos.slice(),
+        yaw: this.player.yaw, pitch: this.player.pitch,
+        inventory: Inventory.serialize(), equipment: Equipment.serialize(),
+        hotbar: this.hotbar.slice(), slot: this.slot,
+      };
+    }
+    this.dimension = kind;
+    const world = this.worlds[kind];
+    this.world = world;
+    this.player.world = world;
+    Animals.reset();
+    Drops.reset();
+    Thrown.reset();
+    arena.start(this);
+    const spot = arena.spawnPoint(world);
+    this.player.spawn = spot.slice();
+    this.player.pos = spot.slice();
+    this.player.vel = [0, 0, 0];
+    this.player.flying = false;
+    this.player.fallFrom = null;
+    this.player.hp = this.player.maxHp;
+    this.player.dead = false;
+    this.dying = false;
+    this.lastChunk = null;
+    this.mining = null;
+    Animals.cap = 0; Animals.hostileCap = 0;        // no wildlife in an arena
+    arena.ensureArena(world);
+    if (arena.kit) arena.kit(this);
+    arena.refreshBoard();
+    this.time = 0.3;
+    this.timeFlow = false;
+    document.getElementById('died').classList.add('hidden');
+    document.getElementById('arenaend').classList.add('hidden');
+    this.updateHotbarUI();
+    this.renderer.buildHandMesh(this.hotbar[this.slot]);
+  },
+
+  leaveMatch() {
+    for (const k in ARENA_MODES) ARENA_MODES[k].stop();
+    Animals.cap = 26; Animals.hostileCap = 12;
+    Animals.reset();
+    Drops.reset();
+    Thrown.reset();
+    this.timeFlow = true;
+    const home = this.homePos;
+    this.dimension = (home && home.dimension) || 'overworld';
+    if (ARENA_MODES[this.dimension]) this.dimension = 'overworld';
+    this.world = this.worlds[this.dimension];
+    this.player.world = this.world;
+    if (home) {
+      this.player.pos = home.pos.slice();
+      this.player.yaw = home.yaw; this.player.pitch = home.pitch;
+      Inventory.load(home.inventory || []);
+      Equipment.load(home.equipment || { head: 0, chest: 0, legs: 0, feet: 0 });
+      if (home.hotbar) this.hotbar = home.hotbar.slice();
+      if (home.slot != null) this.slot = home.slot;
+    }
+    this.player.vel = [0, 0, 0];
+    this.player.fallFrom = null;
+    this.player.spawn = this.player.pos.slice();
+    this.player.hp = this.player.maxHp;
+    this.player.dead = false;
+    this.dying = false;
+    this.lastChunk = null;
+    this._hudArmour = null;
+    this.updateHotbarUI();
+    this.renderer.buildHandMesh(this.hotbar[this.slot]);
+  },
+
+  openShop() {
+    this.shopOpen = true;
+    document.getElementById('shop').classList.add('open');
+    document.exitPointerLock();
+    if (this.dragLook) this.paused = true;
+    this.refreshShop();
+    Sound.animal('hmm', 1);
+  },
+  closeShop() {
+    this.shopOpen = false;
+    document.getElementById('shop').classList.remove('open');
+    if (this.dragLook) { this.paused = false; return; }
+    const p = this.canvas.requestPointerLock();
+    if (p && p.catch) p.catch(() => {});
+  },
+  refreshShop() {
+    if (!this.shopOpen) return;
+    const purse = [I.IRON_INGOT, I.GOLD_INGOT, I.DIAMOND, I.EMERALD]
+      .map(id => '<img src="' + thingIcon(id) + '" alt=""> ' + Inventory.count(id)).join(' &nbsp; ');
+    document.getElementById('shop-purse').innerHTML = purse;
+    const list = document.getElementById('shop-list');
+    list.innerHTML = '';
+    for (const offer of BedWars.offers()) {
+      const gives = BedWars.giveLabel(offer);
+      const b = document.createElement('button');
+      b.className = 'deal';
+      b.innerHTML =
+        '<span class="side"><img src="' + thingIcon(offer.cost[0]) + '" alt="">' +
+          '<span class="qty">' + offer.cost[1] + ' ' + thingName(offer.cost[0]) + '</span></span>' +
+        '<span class="to">&rarr;</span>' +
+        '<span class="side"><img src="' + thingIcon(gives.icon) + '" alt="">' +
+          '<span class="qty">' + gives.text + '</span></span>' +
+        '<span class="left">' + offer.note + '</span>';
+      b.disabled = !BedWars.affordable(offer);
+      b.addEventListener('click', () => {
+        if (!BedWars.buy(offer, this)) return;
+        this.toast('Bought ' + gives.text);
+        this.hotbarCheck();
+        this.refreshShop();
+      });
+      list.appendChild(b);
+    }
   },
 
   selectSlot(i) {
@@ -370,6 +521,7 @@ const Game = {
       const weapon = heldWeapon(this.hotbar[this.slot]);
       const res = Animals.punch(mob, this.player.dir, weapon ? weapon.damage : 1, this.world);
       Sound.burst({ dur: 0.09, freq: weapon ? 520 : 380, gain: 0.35, sweep: 0.5 });
+      if (res.killed && mob.def.bot) BedWars.botDied(mob, 'you');
       if (res.killed && mob.def.boss) this.dragonSlain(mob);
       if (res.killed && res.drops && res.drops.length) {
         this.toast('Collected ' + res.drops.map(d => thingName(d[0]) + (d[1] > 1 ? ' \u00d7' + d[1] : '')).join(', '));
@@ -414,6 +566,19 @@ const Game = {
     }
     if (!hit) return;
     if (hit.id === B.BEDROCK) { this.toast('Bedrock cannot be broken'); return; }
+    if (BedWars.active) {
+      const bed = BedWars.bedAt(hit.x, hit.y, hit.z);
+      if (bed) {
+        if (bed === BedWars.you) { this.toast('That is your own bed'); return; }
+        BedWars.breakBed(bed, 'you');
+        return;
+      }
+      if (!BedWars.canBreak(hit.x, hit.y, hit.z, hit.id)) {
+        this.toast('Only blocks placed during the match can be broken');
+        return;
+      }
+      BedWars.placed.delete(BedWars.key(hit.x, hit.y, hit.z));
+    }
     Sound.dig(hit.id);
     this.world.setBlock(hit.x, hit.y, hit.z, 0);
 
@@ -448,6 +613,7 @@ const Game = {
     if (!fromRepeat) {
       // an animal in the way comes first
       const mob = Animals.pick(this.player.eye, this.player.dir, hit ? hit.dist : this.player.reach);
+      if (mob && mob.bwShop) { this.openShop(); return; }
       if (mob && mob.def.villager) { this.openTrading(mob); return; }
 
       // then whatever you are pointing at, whatever you happen to be holding
@@ -463,7 +629,9 @@ const Game = {
 
     const held = this.hotbar[this.slot];
     if (isItem(held)) { if (!fromRepeat) this.useItem(held); return; }
-    if (!hit) return;
+    if (held && this.bridging()) { this.bridgeAssist(held); return; }
+    // Aiming out into open air: lay the next plank of a bridge instead of nothing.
+    if (!hit) { if (held) this.bridgeAssist(held); return; }
     const [x, y, z] = hit.place;
     if (y < 0 || y >= CY) return;
     const existing = this.world.getBlock(x, y, z);
@@ -471,27 +639,77 @@ const Game = {
     const id = this.hotbar[this.slot];
     if (!id) return;
     if (isSolid(id) && this.player.intersectsBlock(x, y, z)) return;
-    if (this.mode === 'survival' && Inventory.count(id) <= 0) {
+    if (this.survivalRules() && Inventory.count(id) <= 0) {
       this.toast('You have no ' + thingName(id) + ' left');
       return;
     }
     if (id === B.DOOR_LOWER) {
       if (this.world.getBlock(x, y + 1, z) !== 0) { this.toast('No headroom for a door'); return; }
-      if (this.mode === 'survival' && Inventory.count(id) <= 0) { this.toast('You have no doors left'); return; }
+      if (this.survivalRules() && Inventory.count(id) <= 0) { this.toast('You have no doors left'); return; }
       this.world.setBlock(x, y, z, B.DOOR_LOWER);
       this.world.setBlock(x, y + 1, z, B.DOOR_UPPER);
       Sound.place();
-      if (this.mode === 'survival') { Inventory.take(id, 1); this.updateHotbarUI(); }
+      if (this.survivalRules()) { Inventory.take(id, 1); this.updateHotbarUI(); }
       return;
     }
     if (this.world.setBlock(x, y, z, id)) {
+      BedWars.notePlaced(x, y, z);
       if (id === B.CHEST) this.world.chests.set(x + ',' + y + ',' + z, []);
       Sound.place();
-      if (this.mode === 'survival') { Inventory.take(id, 1); this.updateHotbarUI(); }
+      if (this.survivalRules()) { Inventory.take(id, 1); this.updateHotbarUI(); }
     }
   },
+  // Looking well down while on the move means you are running a bridge out, not
+  // building: every click then goes into the walkway, never on top of it.
+  bridging() {
+    const p = this.player;
+    if (p.flying || p.groundY === null || p.pitch > -0.7) return false;
+    return !!(this.input.forward || this.input.back || this.input.left || this.input.right);
+  },
+
+  // God bridging: look down over the drop, run, and keep clicking — each click
+  // lays the block you are about to land on. It only ever fills a gap at the
+  // level you last walked on, and only beside something solid, so it extends a
+  // walkway and can never be used to build out in mid-air.
+  // Where the next plank would go, if you asked for one. Returns null when there
+  // is nowhere sensible — which is also what stops the outline being drawn.
+  bridgeTarget(id) {
+    const p = this.player;
+    if (!id || isItem(id) || p.flying) return null;
+    if (p.pitch > -0.35) return null;                        // you have to be looking down
+    const y = p.groundY;
+    if (y === null || p.pos[1] > y + 1.7 || p.pos[1] < y - 2.5) return null;
+    const s = Math.sin(p.yaw), c = Math.cos(p.yaw);
+    const spots = [
+      [Math.floor(p.pos[0]), Math.floor(p.pos[2])],                    // under your feet
+      [Math.floor(p.pos[0] + s * 0.8), Math.floor(p.pos[2] - c * 0.8)], // the step ahead
+    ];
+    for (const [x, z] of spots) {
+      if (this.world.getBlock(x, y, z)) continue;                      // something already there
+      for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        if (isSolid(this.world.getBlock(x + dx, y, z + dz))) return [x, y, z];
+      }
+    }
+    return null;                                                       // never a block in thin air
+  },
+
+  bridgeAssist(id) {
+    const spot = this.bridgeTarget(id);
+    if (!spot) return false;
+    if (this.survivalRules() && Inventory.count(id) <= 0) {
+      this.toast('You have no ' + thingName(id) + ' left');
+      return false;
+    }
+    const [x, y, z] = spot;
+    if (!this.world.setBlock(x, y, z, id)) return false;
+    BedWars.notePlaced(x, y, z);
+    Sound.place();
+    if (this.survivalRules()) { Inventory.take(id, 1); this.updateHotbarUI(); }
+    return true;
+  },
+
   toggleFly() {
-    if (this.mode === 'survival') {
+    if (this.survivalRules()) {
       this.player.flying = false;          // never leave survival airborne
       this.toast('Flying is creative only');
       return;
@@ -720,6 +938,20 @@ const Game = {
     this.toast('Ate ' + def.name);
   },
 
+  // A picked-up thing takes the first empty hotbar slot, so it is ready to use
+  // without opening the bag. Anything already on the bar stays where it is.
+  hotbarStow(id) {
+    if (!id) return false;
+    for (let i = 0; i < 9; i++) if (this.hotbar[i] === id) return false;
+    for (let i = 0; i < 9; i++) {
+      if (this.hotbar[i]) continue;
+      this.hotbar[i] = id;
+      if (i === this.slot) this.renderer.buildHandMesh(id);
+      return true;
+    }
+    return false;
+  },
+
   // Drop hotbar entries for items you no longer carry.
   hotbarCheck() {
     for (let i = 0; i < 9; i++) {
@@ -841,11 +1073,14 @@ const Game = {
       });
       Drops.update(dt, this.world, this.player, d => {
         Inventory.add(d.id, d.count);
+        this.hotbarStow(d.id);
         Sound.burst({ dur: 0.07, freq: 1100, gain: 0.18, sweep: 1.4 });
         this.toast('Picked up ' + thingName(d.id) + (d.count > 1 ? ' \u00d7' + d.count : ''));
         this.updateHotbarUI();
         if (this.inventoryOpen) this.refreshCraft();
       });
+      BedWars.update(dt, this);
+      Hunger.update(dt, this);
       this.checkDeath();
       this.updatePortal(dt);
       if (this.player.inWater !== wasInWater) Sound.splash();
@@ -859,7 +1094,14 @@ const Game = {
       } else if (breaking) {
         this.updateMining(dt);
       } else this.mining = null;
-      if ((this.mouse.right && locked) || this.keyPlace) { this.placeTimer -= dt; if (this.placeTimer <= 0) { this.placeBlock(true); this.placeTimer = 0.22; } }
+      if ((this.mouse.right && locked) || this.keyPlace) {
+        this.placeTimer -= dt;
+        if (this.placeTimer <= 0) {
+          const fast = this.bridging();          // keep up with a sprint
+          this.placeBlock(true);
+          this.placeTimer = fast ? 0.08 : 0.22;
+        }
+      }
     }
 
     this.waterScroll = (this.waterScroll + dt * 0.06) % 1;
@@ -919,6 +1161,12 @@ const Game = {
     const hit = this.ready ? p.raycast() : null;
     this.lastHit = hit;
 
+    // The outline of the block you are about to lay, shown exactly when a click
+    // would actually lay it there.
+    let ghost = null;
+    const held = this.hotbar[this.slot];
+    if (this.ready && held && !isItem(held) && (this.bridging() || !hit)) ghost = this.bridgeTarget(held);
+
     return {
       eye: [p.pos[0], p.pos[1] + P_EYE + p.bob, p.pos[2]],
       dir: p.dir,
@@ -929,6 +1177,7 @@ const Game = {
       mobs: Animals.list,
       drops: Drops.list.concat(Thrown.list),
       highlight: hit ? [hit.x, hit.y, hit.z] : null,
+      ghost,
       breakPos: this.mining ? [this.mining.x, this.mining.y, this.mining.z] : null,
       breakStage: this.mining && isFinite(this.mining.total)
         ? Math.min(9, Math.floor(this.mining.t / this.mining.total * 10)) : -1,
@@ -960,7 +1209,7 @@ const Game = {
       img.src = id ? thingIcon(id) : '';
       img.style.visibility = id ? 'visible' : 'hidden';
       const badge = s.querySelector('.have');
-      const showCount = id && (isItem(id) || this.mode === 'survival');
+      const showCount = id && (isItem(id) || this.survivalRules());
       badge.textContent = showCount ? Inventory.count(id) : '';
       badge.classList.toggle('none', showCount && Inventory.count(id) === 0);
     });
@@ -979,12 +1228,127 @@ const Game = {
     filter.addEventListener('keydown', e => e.stopPropagation());
   },
 
+  // ---- Dragging a stack out of the inventory ---------------------------
+  // Grab a slot, pull it off the window and let go: the stack sails out in
+  // front of you as a real dropped item. Shift while letting go throws one.
+  stackDragInit() {
+    if (this.stackDragReady) return;
+    this.stackDragReady = true;
+    document.addEventListener('pointermove', e => this.stackDragMove(e));
+    document.addEventListener('pointerup', e => this.stackDragEnd(e));
+    document.addEventListener('pointercancel', () => this.stackDragCancel());
+  },
+
+  // Mark a slot as something you can pull out. `src` says where the stack lives.
+  makeDraggable(el, src) {
+    if (!src.id) return el;
+    el.classList.add('draggable');
+    // without this the browser runs off with its own image drag and cancels ours
+    el.addEventListener('dragstart', e => e.preventDefault());
+    el.addEventListener('pointerdown', e => {
+      if (e.button !== 0) return;
+      this.stackDragInit();
+      this.stackDrag = { src, x0: e.clientX, y0: e.clientY, live: false, ghost: null };
+      if (el.setPointerCapture) { try { el.setPointerCapture(e.pointerId); } catch (err) {} }
+    });
+    return el;
+  },
+
+  stackDragMove(e) {
+    const d = this.stackDrag;
+    if (!d) return;
+    if (!d.live) {
+      if (Math.hypot(e.clientX - d.x0, e.clientY - d.y0) < 6) return;
+      d.live = true;
+      d.ghost = document.createElement('div');
+      d.ghost.className = 'drag-ghost';
+      d.ghost.innerHTML = '<img src="' + thingIcon(d.src.id) + '" alt="" draggable="false">';
+      document.body.appendChild(d.ghost);
+      document.body.classList.add('dragging-stack');
+    }
+    d.ghost.style.left = e.clientX + 'px';
+    d.ghost.style.top = e.clientY + 'px';
+    const out = this.overDropTarget(e);
+    d.ghost.classList.toggle('over-world', out);
+    document.getElementById('dropzone').classList.toggle('hot', out);
+  },
+
+  // Where a release counts as throwing the stack away: the drop bar along the
+  // bottom, or anywhere clear of the open window. The bar is hit-tested by its
+  // rectangle because it does not take pointer events itself.
+  overDropTarget(e) {
+    const zone = document.getElementById('dropzone').getBoundingClientRect();
+    if (zone.height && e.clientY >= zone.top) return true;
+    const el = document.elementFromPoint(e.clientX, e.clientY);
+    return !(el && el.closest && el.closest('.panel'));
+  },
+
+  stackDragCancel() {
+    const d = this.stackDrag;
+    this.stackDrag = null;
+    if (!d) return;
+    if (d.ghost) d.ghost.remove();
+    document.body.classList.remove('dragging-stack');
+    document.getElementById('dropzone').classList.remove('hot');
+  },
+
+  stackDragEnd(e) {
+    const d = this.stackDrag;
+    if (!d) return;
+    const live = d.live, src = d.src;
+    this.stackDragCancel();
+    if (!live) return;                       // a plain click: leave it to the slot
+    // swallow the click this pointerup is about to produce
+    const eat = ev => { ev.stopPropagation(); ev.preventDefault(); };
+    window.addEventListener('click', eat, true);
+    setTimeout(() => window.removeEventListener('click', eat, true), 0);
+    if (!this.overDropTarget(e)) return;      // let go inside the window: nothing happens
+    this.dropFrom(src, e.shiftKey ? 1 : Infinity);
+  },
+
+  // Throw `want` of a stack away, taking it from wherever the slot was fed from.
+  dropFrom(src, want) {
+    const id = src.id;
+    if (!id) return;
+    if (src.kind === 'armour') {
+      if (Equipment[src.slot] !== id || !Equipment.unequip(src.slot)) return;
+      want = 1;                              // the piece you were wearing, not your spares
+    }
+    let have = Inventory.count(id);
+    if (src.kind === 'hotbar' && have <= 0) {
+      this.hotbar[src.slot] = 0;             // a creative block with nothing behind it
+      this.toast('Cleared slot ' + (src.slot + 1));
+      this.updateHotbarUI();
+      this.renderer.buildHandMesh(this.hotbar[this.slot]);
+      this.refreshCraft();
+      return;
+    }
+    const n = Math.min(have, want);
+    if (n <= 0) return;
+    Inventory.take(id, n);
+    this.dropStack(id, n);
+    if (src.kind === 'hotbar' && (want === Infinity || Inventory.count(id) <= 0)) this.hotbar[src.slot] = 0;
+    this.toast('Dropped ' + thingName(id) + (n > 1 ? ' \u00d7' + n : ''));
+    this.hotbarCheck();
+    this.refreshCraft();
+  },
+
+  // The stack leaves your hands and arcs out in front of you.
+  dropStack(id, n) {
+    const eye = this.player.eye, dir = this.player.dir;
+    const d = Drops.spawn(this.world, eye[0] + dir[0] * 0.6, eye[1] + dir[1] * 0.6 - 0.2, eye[2] + dir[2] * 0.6, id, n, 0);
+    if (!d) return;
+    d.vx = dir[0] * 6; d.vy = dir[1] * 6 + 1.8; d.vz = dir[2] * 6;
+    d.delay = 1.6;                           // so you do not scoop it straight back up
+    Sound.burst({ dur: 0.11, freq: 360, gain: 0.18, sweep: 0.7 });
+  },
+
   // One inventory slot: an icon, a stack count, and a name on hover.
   slotEl(id, count, onClick, opts = {}) {
     const el = document.createElement('div');
     el.className = 'mcslot' + (id ? '' : ' empty') + (opts.className ? ' ' + opts.className : '');
     if (id) {
-      el.innerHTML = '<img src="' + thingIcon(id) + '" alt="">' +
+      el.innerHTML = '<img src="' + thingIcon(id) + '" alt="" draggable="false">' +
         (count > 1 ? '<span class="n">' + count + '</span>' : '');
       el.title = thingName(id) + (count > 1 ? ' \u00d7' + count : '');
     } else if (opts.placeholder) {
@@ -1011,7 +1375,7 @@ const Game = {
     } else {
       this.hotbar[this.slot] = id;
       this.renderer.buildHandMesh(id);
-      if (count > 1 || this.mode === 'survival') Inventory.add(id, count);
+      if (count > 1 || this.survivalRules()) Inventory.add(id, count);
       this.toast(thingName(id) + ' in slot ' + (this.slot + 1));
     }
     this.updateHotbarUI();
@@ -1055,7 +1419,10 @@ const Game = {
       const worn = Equipment[slotName];
       const cell = this.slotEl(worn, 1, () => { if (Equipment.unequip(slotName)) this.refreshCraft(); },
         { placeholder: labels[slotName], title: 'Empty ' + labels[slotName] + ' slot' });
-      if (worn) cell.title = thingName(worn) + ' — click to take off';
+      if (worn) {
+        cell.title = thingName(worn) + ' — click to take off, drag out to drop';
+        this.makeDraggable(cell, { kind: 'armour', slot: slotName, id: worn });
+      }
       armourRow.appendChild(cell);
     }
     for (const part of document.querySelectorAll('.doll-part')) {
@@ -1127,6 +1494,8 @@ const Game = {
         this.brush = this.brush === id ? 0 : id;
         this.refreshCraft();
       });
+      this.makeDraggable(cell, { kind: 'inv', id });
+      cell.title += ' — drag out of the window to drop it';
       if (this.brush === id) cell.classList.add('selected');
       if (id === this.justMade) {
         cell.classList.add('just-made');
@@ -1142,10 +1511,11 @@ const Game = {
     for (let i = 0; i < 9; i++) {
       const id = this.hotbar[i];
       const count = id ? Inventory.count(id) : 0;
-      const cell = this.slotEl(id, isItem(id) || this.mode === 'survival' ? count : 1,
+      const cell = this.slotEl(id, isItem(id) || this.survivalRules() ? count : 1,
         () => { this.selectSlot(i); this.refreshCraft(); },
         { placeholder: String(i + 1), title: 'Hotbar slot ' + (i + 1) });
       if (i === this.slot) cell.classList.add('current');
+      if (id) this.makeDraggable(cell, { kind: 'hotbar', slot: i, id });
       bar.appendChild(cell);
     }
 
@@ -1239,6 +1609,8 @@ const Game = {
 
   checkDeath() {
     if (!this.player.dead || this.dying) return;
+    if (BedWars.active && BedWars.phase === 'playing') { BedWars.playerDied(this); return; }
+    if (Hunger.active && Hunger.phase !== 'over') { Hunger.playerDied(this); return; }
     this.dying = true;
     const lost = this.dropEverything();
     document.getElementById('died-reason').textContent =
@@ -1471,6 +1843,7 @@ const Game = {
 
   // ---- persistence -----------------------------------------------------
   save(silent) {
+    if (ARENA_MODES[this.dimension]) return;       // a match is not a world worth keeping
     try {
       const edits = [...this.world.edits.entries()];
       if (edits.length > 120000) edits.length = 120000;

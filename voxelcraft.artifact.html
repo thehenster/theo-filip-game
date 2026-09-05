@@ -189,6 +189,39 @@ body:not(.survival) .survival-only, body.survival .creative-only { display: none
 @media (prefers-reduced-motion: reduce) { .mcslot.just-made { animation: none; } }
 .mcslot .ph { font-size: 8px; color: #5d6577; text-transform: uppercase; letter-spacing: .04em; }
 
+/* Pull a slot off the window and let go to throw the stack on the ground. */
+.mcslot.draggable { touch-action: none; }
+.mcslot { -webkit-user-select: none; user-select: none; }
+.mcslot img, .drag-ghost img { -webkit-user-drag: none; user-drag: none; }
+body.dragging-stack { cursor: grabbing; }
+body.dragging-stack .mcslot { cursor: grabbing; }
+#dropzone {
+  position: fixed; left: 0; right: 0; bottom: 0; height: 116px; z-index: 39; display: none;
+  align-items: center; justify-content: center; pointer-events: none;
+  background: linear-gradient(to top, rgba(232,115,92,.42), rgba(232,115,92,0));
+  border-top: 2px dashed rgba(232,115,92,.75);
+}
+#dropzone span {
+  font-size: 12px; text-transform: uppercase; letter-spacing: .1em; color: #ffd2c7;
+  margin-bottom: 26px; padding: 8px 16px; border-radius: 999px;
+  background: rgba(18,12,11,.92); border: 1px solid rgba(232,115,92,.65);
+}
+body.dragging-stack #dropzone { display: flex; }
+#dropzone.hot { background: linear-gradient(to top, rgba(232,115,92,.6), rgba(232,115,92,.05)); }
+#dropzone.hot span { color: #fff; }
+
+.drag-ghost {
+  position: fixed; z-index: 41; width: 44px; height: 44px; margin: -22px 0 0 -22px;
+  display: grid; place-items: center; pointer-events: none; border-radius: 4px;
+  background: rgba(255,255,255,.14); border: 1px solid rgba(255,255,255,.28);
+}
+.drag-ghost img { width: 34px; height: 34px; image-rendering: pixelated; }
+.drag-ghost.over-world { border-color: #e8735c; background: rgba(232,115,92,.28); transform: scale(1.1); }
+.drag-ghost.over-world::after {
+  content: 'drop'; position: absolute; top: 100%; margin-top: 4px; font-size: 9px;
+  text-transform: uppercase; letter-spacing: .08em; color: #ffc9bd; text-shadow: 1px 1px 0 #000;
+}
+
 .mc-grid { display: grid; grid-template-columns: repeat(9, 44px); gap: 3px; }
 .mc-scroll { max-height: 196px; overflow-y: auto; padding-right: 4px; }
 .mc-hotbar { padding: 4px; border-radius: 8px; background: rgba(255,255,255,.04); width: max-content;
@@ -234,6 +267,31 @@ body:not(.survival) .survival-only, body.survival .creative-only { display: none
 .recipe .txt b { font-weight: 600; font-size: 11px; color: #e8ecf4; }
 .recipe .txt span { font-size: 10px; color: #7a8395; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .recipe .yield { margin-left: auto; font-size: 11px; color: #9aa4b8; font-variant-numeric: tabular-nums; }
+
+
+/* ---- Bed Wars ------------------------------------------------------- */
+#shop { position: fixed; inset: 0; display: none; place-items: center; background: rgba(6,8,13,.72); backdrop-filter: blur(8px); z-index: 9; }
+#shop.open { display: grid; }
+
+#arenaboard {
+  position: fixed; top: 14px; right: 14px; width: 186px; padding: 10px 12px; border-radius: 8px;
+  background: rgba(10,13,20,.72); border: 1px solid rgba(255,255,255,.12); pointer-events: none;
+  font-size: 12px; color: #e6e9f0;
+}
+#arenaboard h4 { margin: 0 0 7px; font-size: 10px; text-transform: uppercase; letter-spacing: .12em; color: #9aa4b8; }
+.bwrow { display: flex; align-items: center; gap: 7px; padding: 2px 0; }
+.bwrow i { width: 9px; height: 9px; border-radius: 2px; flex: none; }
+.bwrow .bwname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bwrow .bwstate { font-size: 10px; color: #9aa4b8; }
+.bwrow.you .bwname { font-weight: 700; }
+.bwrow.gone { opacity: .45; text-decoration: line-through; }
+.bwclock { margin-top: 7px; padding-top: 6px; border-top: 1px solid rgba(255,255,255,.1); font-size: 10px; color: #9aa4b8; }
+
+#arenanews {
+  position: fixed; top: 76px; left: 50%; transform: translateX(-50%); pointer-events: none;
+  padding: 8px 16px; border-radius: 999px; background: rgba(10,13,20,.85);
+  border: 1px solid rgba(255,255,255,.16); font-size: 13px; color: #fff; z-index: 8;
+}
 </style>
 <canvas id="gl"></canvas>
 
@@ -246,6 +304,8 @@ body:not(.survival) .survival-only, body.survival .creative-only { display: none
   <div id="crosshair"></div>
   <div id="debug" class="hidden"></div>
   <div id="toast"></div>
+  <div id="arenaboard" class="hidden"></div>
+  <div id="arenanews" class="hidden"></div>
   <div id="bottom">
     <div id="blockname"></div>
     <div id="airbar"></div>
@@ -256,6 +316,9 @@ body:not(.survival) .survival-only, body.survival .creative-only { display: none
     <div id="hotbar"></div>
   </div>
 </div>
+
+<!-- Appears only while dragging a stack: an unmissable target for throwing it away. -->
+<div id="dropzone" aria-hidden="true"><span>Let go here to drop it into the world</span></div>
 
 <div id="inventory">
   <div class="panel mc-window">
@@ -293,7 +356,7 @@ body:not(.survival) .survival-only, body.survival .creative-only { display: none
         </div>
       </div>
 
-      <div class="mc-label">Inventory <span class="sub2" id="mat-hint">click a tool to hold it &middot; click armour to wear it &middot; shift-click anything to the hotbar</span></div>
+      <div class="mc-label">Inventory <span class="sub2" id="mat-hint">click a tool to hold it &middot; click armour to wear it &middot; shift-click anything to the hotbar &middot; drag a slot downwards to drop it (shift for one)</span></div>
       <div id="craft-mats" class="mc-grid"></div>
 
       <div class="mc-label">Hotbar</div>
@@ -330,6 +393,18 @@ body:not(.survival) .survival-only, body.survival .creative-only { display: none
         <button class="mode-card" data-mode="survival">
           <b>Survival</b>
           <span>No flying. Mine what you build with, and mind your health.</span>
+        </button>
+        <button class="mode-card" data-mode="rush">
+          <b>Rush</b>
+          <span>Bed Wars with the waiting cut out: two teams, bases within sight, and generators that never stop.</span>
+        </button>
+        <button class="mode-card" data-mode="hunger">
+          <b>Hunger Games</b>
+          <span>Eight tributes, one island. Loot the chests, outlast the rest, and mind the closing ring.</span>
+        </button>
+        <button class="mode-card" data-mode="bedwars">
+          <b>Bed Wars</b>
+          <span>Four teams on floating islands. Guard your bed, break theirs, and the last team standing wins.</span>
         </button>
       </div>
       <button id="play" class="primary">Play</button>
@@ -379,7 +454,8 @@ body:not(.survival) .survival-only, body.survival .creative-only { display: none
         <div><kbd>&larr;</kbd><kbd>&uarr;</kbd><kbd>&darr;</kbd><kbd>&rarr;</kbd><span>Move</span></div>
         <div><kbd>Mouse</kbd><span>Look around</span></div>
         <div><kbd>Space</kbd><span>Jump &middot; double-tap to fly</span></div>
-        <div><kbd>Shift</kbd><span>Sneak &middot; descend while flying</span></div>
+        <div><kbd>Shift</kbd><span>Sneak &middot; hold at an edge to bridge</span></div>
+        <div>Look down + run<span>God bridge: click to lay blocks as you go</span></div>
         <div><kbd>S</kbd><span>Sprint</span></div>
         <div><kbd>M</kbd> / <kbd>Left click</kbd><span>Break block &middot; attack</span></div>
         <div><kbd>P</kbd> / <kbd>Right click</kbd><span>Place &middot; use &middot; eat</span></div>
@@ -430,6 +506,26 @@ body:not(.survival) .survival-only, body.survival .creative-only { display: none
     </div>
     <div class="trade-purse">Fuel on hand: <b id="furnace-fuel">none</b></div>
     <div id="furnace-list"></div>
+  </div>
+</div>
+
+<div id="shop">
+  <div class="panel trade-panel">
+    <div class="mc-head">
+      <h2>Team shop</h2>
+      <p class="hint">Spend what the generators give you &middot; <kbd>Esc</kbd> to close</p>
+    </div>
+    <div class="trade-purse" id="shop-purse"></div>
+    <div id="shop-list"></div>
+  </div>
+</div>
+
+<div id="arenaend" class="overlay hidden">
+  <div class="panel">
+    <h1 id="arenaend-title">Game over</h1>
+    <p class="sub" id="arenaend-sub"></p>
+    <button id="arenaend-again" class="primary">Play again</button>
+    <div class="menu-buttons"><button id="arenaend-leave">Back to the overworld</button></div>
   </div>
 </div>
 
@@ -1570,7 +1666,7 @@ function spriteTile(name, mask, palette) {
         const ch = row[x];
         if (!ch || ch === '.') continue;
         const c = palette[ch];
-        const v = (t.rnd() - 0.5) * (c[3] === undefined ? 10 : c[3]);
+        const v = c[3] ? (t.rnd() - 0.5) * c[3] : 0;
         t.px(x, y, c[0] + v, c[1] + v, c[2] + v, 255);
       }
     }
@@ -1593,161 +1689,226 @@ function spriteTile(name, mask, palette) {
 }
 
 const MASK_SWORD = [
-  '.............BT.',
-  '............BTT.',
-  '...........BTT..',
-  '..........BTT...',
-  '.........BTT....',
-  '........BTT.....',
-  '.......BTT......',
-  '......BTT.......',
-  '.....BTT........',
-  '..G..BT.........',
-  '..GG.B..........',
-  '.GGGG...........',
-  '.HGG............',
-  'HH..............',
+  '.............LM.',
+  '............LM..',
+  '...........LM...',
+  '..........LM....',
+  '.........LM.....',
+  '........LM......',
+  '.......LM.......',
+  '......LM........',
+  '.....LM.........',
+  '....LM..........',
+  '..GGGG..........',
+  '..GGG...........',
+  '..Hh............',
+  '.Hh.............',
+  'Hh..............',
   'H...............',
-  '................',
 ];
+
 const MASK_HELMET = [
   '................',
   '................',
-  '................',
-  '...AAAAAAAAAA...',
-  '..AAAAAAAAAAAA..',
-  '..AAAAAAAAAAAA..',
-  '..AAA......AAA..',
-  '..AAA......AAA..',
-  '..AAAAAAAAAAAA..',
-  '..AA........AA..',
-  '..AA........AA..',
+  '...LLLLLLLLLL...',
+  '..LLLLLLLLLLLL..',
+  '..LMMMMMMMMMML..',
+  '..MMMMMMMMMMMM..',
+  '..MMDDDDDDDDMM..',
+  '..MMDDDDDDDDMM..',
+  '..MMMMMMMMMMMM..',
+  '..MMMMMMMMMMMM..',
+  '..DDDDDDDDDDDD..',
   '................',
   '................',
   '................',
   '................',
   '................',
 ];
+
 const MASK_CHEST = [
   '................',
   '................',
-  '..AA........AA..',
-  '.AAAAAAAAAAAAAA.',
-  '.AAAAAAAAAAAAAA.',
-  '.AAAAAAAAAAAAAA.',
-  '..AAAAAAAAAAAA..',
-  '..AAAAAAAAAAAA..',
-  '..AAAAAAAAAAAA..',
-  '..AAAAAAAAAAAA..',
-  '...AAAAAAAAAA...',
-  '................',
+  '..LLL......LLL..',
+  '.LLLLL....LLLLL.',
+  '.LMMML....LMMML.',
+  '.MMMMMLLLLMMMMM.',
+  '.MMMMMMMMMMMMMM.',
+  '.MMM.MMMMMM.MMM.',
+  '.MMM.MMMMMM.MMM.',
+  '.DDD.MMMMMM.DDD.',
+  '.....MMMMMM.....',
+  '.....DDDDDD.....',
   '................',
   '................',
   '................',
   '................',
 ];
+
 const MASK_LEGS = [
   '................',
   '................',
-  '..AAAAAAAAAAAA..',
-  '..AAAAAAAAAAAA..',
-  '..AAAAAAAAAAAA..',
-  '..AAAAAAAAAAAA..',
-  '..AAAA....AAAA..',
-  '..AAAA....AAAA..',
-  '..AAA......AAA..',
-  '..AAA......AAA..',
-  '..AAA......AAA..',
-  '................',
+  '..LLLLLLLLLLLL..',
+  '..LMMMMMMMMMML..',
+  '..MMMMMMMMMMMM..',
+  '..MMMMM..MMMMM..',
+  '..MMMM....MMMM..',
+  '..MMMM....MMMM..',
+  '..MMMM....MMMM..',
+  '..MMMM....MMMM..',
+  '..MMMM....MMMM..',
+  '..DDDD....DDDD..',
   '................',
   '................',
   '................',
   '................',
 ];
+
 const MASK_BOOTS = [
   '................',
   '................',
   '................',
   '................',
-  '..AAA......AAA..',
-  '..AAA......AAA..',
-  '..AAAA....AAAA..',
-  '.AAAAAA..AAAAAA.',
-  '.AAAAAA..AAAAAA.',
-  '................',
-  '................',
+  '..LLLL....LLLL..',
+  '..MMMM....MMMM..',
+  '..MMMM....MMMM..',
+  '..MMMM....MMMM..',
+  '.MMMMM....MMMMM.',
+  '.MMMMM....MMMMM.',
+  '.DDDDD....DDDDD.',
   '................',
   '................',
   '................',
   '................',
   '................',
 ];
+
 const MASK_INGOT = [
   '................',
   '................',
   '................',
   '................',
-  '....IIIIII......',
-  '...IIIIIIII.....',
-  '..IIIIIIIIII....',
-  '..IIIIIIIIII....',
-  '...IIIIIIII.....',
   '................',
-  '................',
+  '....LLLLLLLL....',
+  '...LLLLLLLLLL...',
+  '..MMMMMMMMMMMM..',
+  '..MMMMMMMMMMMM..',
+  '..DDDDDDDDDDDD..',
+  '...DDDDDDDDDD...',
   '................',
   '................',
   '................',
   '................',
   '................',
 ];
+
 const MASK_GEM = [
   '................',
   '................',
   '................',
+  '......MM........',
+  '.....MLLM.......',
+  '....MLLLLM......',
+  '...MLLLLLLM.....',
+  '...MLLLLLLM.....',
+  '....MLLLLM......',
+  '.....MDDM.......',
   '......DD........',
-  '.....DDDD.......',
-  '....DDDDDD......',
-  '...DDDDDDDD.....',
-  '....DDDDDD......',
-  '.....DDDD.......',
-  '......DD........',
-  '................',
   '................',
   '................',
   '................',
   '................',
   '................',
 ];
+
+const MASK_ORB = [
+  '................',
+  '................',
+  '................',
+  '................',
+  '......MMMM......',
+  '....MLLLLLLM....',
+  '...MLLLLLLLLM...',
+  '...MLLLLLLLLM...',
+  '...MLLLLLLLLM...',
+  '...MDLLLLLLDM...',
+  '....MDDDDDDM....',
+  '......DDDD......',
+  '................',
+  '................',
+  '................',
+  '................',
+];
+
 const MASK_STICK = [
   '................',
-  '............SS..',
-  '...........SS...',
-  '..........SS....',
-  '.........SS.....',
-  '........SS......',
-  '.......SS.......',
-  '......SS........',
-  '.....SS.........',
-  '....SS..........',
-  '...SS...........',
-  '..SS............',
+  '............Ss..',
+  '...........Ss...',
+  '..........Ss....',
+  '.........Ss.....',
+  '........Ss......',
+  '.......Ss.......',
+  '......Ss........',
+  '.....Ss.........',
+  '....Ss..........',
+  '...Ss...........',
+  '..Ss............',
+  '.Ss.............',
+  '................',
+  '................',
+  '................',
+];
+
+const MASK_FEATHER = [
+  '................',
+  '................',
+  '...........LLM..',
+  '..........LLLM..',
+  '.........LLLM...',
+  '........LLLLM...',
+  '.......LLLLM....',
+  '......LLLLM.....',
+  '.....LLLLM......',
+  '....LLLM........',
+  '...LLM..........',
+  '..LM............',
+  '.M..............',
+  '................',
+  '................',
+  '................',
+];
+
+const MASK_HIDE = [
+  '................',
+  '................',
+  '................',
+  '...LLLLLLLLLL...',
+  '..LMMMMMMMMMML..',
+  '..LMMMMMMMMMML..',
+  '..MMMMMMMMMMMM..',
+  '..MMMMMMMMMMMM..',
+  '..MMMMMMMMMMMM..',
+  '..DMMMMMMMMMMD..',
+  '...DDDDDDDDDD...',
+  '................',
   '................',
   '................',
   '................',
   '................',
 ];
+
 const MASK_MEAT = [
   '................',
   '................',
   '................',
   '.....MMMM.......',
-  '...MMMMMMMM.....',
-  '..MMMMMMMMMM.BB.',
+  '...MMLLMMMM.....',
+  '..MMLLLMMMMM..BB',
+  '..MMLLMMMMMMMBB.',
   '..MMMMMMMMMMBB..',
-  '..MMMMMMMMMMBB..',
-  '...MMMMMMMM.BB..',
-  '.....MMMM.......',
-  '................',
+  '...MMMMMMMMBB...',
+  '....DDDDDDD.....',
+  '.....DDDD.......',
   '................',
   '................',
   '................',
@@ -1808,77 +1969,86 @@ function defineUiSprites() {
 
 const MASK_PICKAXE = [
   '................',
-  '....MMM...MMM...',
-  '...MMMMMMMMMMM..',
-  '...MM...S...MM..',
-  '........S.......',
-  '.......SS.......',
-  '......SS........',
-  '.....SS.........',
-  '....SS..........',
-  '...SS...........',
-  '..SS............',
-  '.SS.............',
-  '.S..............',
-  '................',
+  '..LLL......LLL..',
+  '.LMMMLLLLLLMMML.',
+  '.LMMMMMMMMMMMML.',
+  '.DDD..MMMM..DDD.',
+  '........Ss......',
+  '.......Ss.......',
+  '......Ss........',
+  '.....Ss.........',
+  '....Ss..........',
+  '...Ss...........',
+  '..Ss............',
+  '.Ss.............',
+  'Ss..............',
   '................',
   '................',
 ];
+
 const MASK_AXE = [
   '................',
-  '.....MMMM.......',
-  '....MMMMMM......',
-  '....MMMMMM......',
-  '....MMMMSS......',
-  '.....MMSS.......',
-  '.......S........',
-  '......SS........',
-  '.....SS.........',
-  '....SS..........',
-  '...SS...........',
-  '..SS............',
-  '.SS.............',
-  '................',
-  '................',
+  '..LLLLL.........',
+  '..LMMMMM........',
+  '..LMMMMMM..Ss...',
+  '..LMMMMMMMSs....',
+  '..LMMMMMMSs.....',
+  '..DMMMMMSs......',
+  '..DDDDDSs.......',
+  '......Ss........',
+  '.....Ss.........',
+  '....Ss..........',
+  '...Ss...........',
+  '..Ss............',
+  '.Ss.............',
+  'Ss..............',
   '................',
 ];
+
 const MASK_SHOVEL = [
   '................',
-  '.......MMM......',
-  '......MMMMM.....',
-  '......MMMMM.....',
-  '......MMMMM.....',
-  '.......MSM......',
-  '.......SS.......',
-  '......SS........',
-  '.....SS.........',
-  '....SS..........',
-  '...SS...........',
-  '..SS............',
-  '.SS.............',
-  '................',
-  '................',
-  '................',
+  '.....LLLLL......',
+  '.....LMMML......',
+  '.....LMMML......',
+  '.....LMMML......',
+  '.....LMMML......',
+  '.....DMMMD......',
+  '......DMD.......',
+  '.......Ss.......',
+  '......Ss........',
+  '.....Ss.........',
+  '....Ss..........',
+  '...Ss...........',
+  '..Ss............',
+  '.Ss.............',
+  'Ss..............',
 ];
 
 const MASK_FLINT_STEEL = [
   '................',
   '................',
-  '..........SSS...',
-  '.........SS..S..',
-  '........SS......',
-  '.......SS.......',
-  '..FF..SS........',
-  '.FFFF.S.........',
-  '.FFFFF..........',
-  '..FFF...........',
   '................',
+  '.........MMMM...',
+  '........MM..MM..',
+  '.......MM....M..',
+  '......MM.....M..',
+  '..FF..MM....MM..',
+  '.FFFF..MM.......',
+  '.FFFf...........',
+  '..ff............',
   '................',
   '................',
   '................',
   '................',
   '................',
 ];
+
+// Item art is shaded the way Minecraft's is: a lit edge, the body colour and a
+// shadow, all struck from one base colour so every material stays recognisable.
+const tone = (c, f) => c.map(v => Math.min(255, Math.round(v * f)));
+const shades = c => ({ L: tone(c, 1.25), M: c, D: tone(c, 0.66) });
+const HAFT = { S: [150, 110, 66], s: [104, 74, 44] };
+const GRIP = { G: [128, 128, 136], H: [122, 86, 50], h: [86, 60, 34] };
 
 function defItem(name, tile, opts = {}) {
   const id = ITEM_BASE + ITEMS.length;
@@ -1889,61 +2059,60 @@ function defItem(name, tile, opts = {}) {
 let I = {};
 function defineItems() {
   ITEMS.length = 0;
-  const HANDLE = { H: [110, 78, 46], G: [140, 140, 148] };
-  const sword = (name, blade, hi) => defItem(name, spriteTile('sw_' + name.replace(/\s+/g, '_').toLowerCase(),
-    MASK_SWORD, Object.assign({ B: blade, T: hi }, HANDLE)));
-  const armour = (name, mask, key, colour, hi, slot, points) =>
-    defItem(name, spriteTile(key, mask, { A: colour }), { slot, points, armour: true });
+  const sword = (name, blade) => defItem(name, spriteTile('sw_' + name.replace(/\s+/g, '_').toLowerCase(),
+    MASK_SWORD, Object.assign(shades(blade), GRIP)));
+  const armour = (name, mask, key, colour, slot, points) =>
+    defItem(name, spriteTile(key, mask, shades(colour)), { slot, points, armour: true });
 
   I = {
-    STICK: defItem('Stick', spriteTile('it_stick', MASK_STICK, { S: [140, 102, 60] })),
-    IRON_INGOT: defItem('Iron Ingot', spriteTile('it_iron_ingot', MASK_INGOT, { I: [216, 216, 220] })),
-    GOLD_INGOT: defItem('Gold Ingot', spriteTile('it_gold_ingot', MASK_INGOT, { I: [242, 206, 78] })),
-    DIAMOND: defItem('Diamond', spriteTile('it_diamond', MASK_GEM, { D: [110, 228, 226] })),
-    EMERALD: defItem('Emerald', spriteTile('it_emerald', MASK_GEM, { D: [72, 214, 106] })),
+    STICK: defItem('Stick', spriteTile('it_stick', MASK_STICK, HAFT)),
+    IRON_INGOT: defItem('Iron Ingot', spriteTile('it_iron_ingot', MASK_INGOT, shades([206, 206, 212]))),
+    GOLD_INGOT: defItem('Gold Ingot', spriteTile('it_gold_ingot', MASK_INGOT, shades([232, 196, 72]))),
+    DIAMOND: defItem('Diamond', spriteTile('it_diamond', MASK_GEM, shades([104, 224, 222]))),
+    EMERALD: defItem('Emerald', spriteTile('it_emerald', MASK_GEM, shades([64, 202, 96]))),
 
-    WOOD_SWORD: sword('Wooden Sword', [162, 124, 74], [196, 158, 104]),
-    STONE_SWORD: sword('Stone Sword', [126, 126, 126], [166, 166, 166]),
-    IRON_SWORD: sword('Iron Sword', [206, 206, 212], [244, 244, 248]),
-    GOLD_SWORD: sword('Golden Sword', [230, 196, 76], [252, 232, 150]),
-    DIAMOND_SWORD: sword('Diamond Sword', [104, 224, 222], [178, 246, 244]),
+    WOOD_SWORD: sword('Wooden Sword', [162, 124, 74]),
+    STONE_SWORD: sword('Stone Sword', [126, 126, 126]),
+    IRON_SWORD: sword('Iron Sword', [206, 206, 212]),
+    GOLD_SWORD: sword('Golden Sword', [230, 196, 76]),
+    DIAMOND_SWORD: sword('Diamond Sword', [104, 224, 222]),
 
-    IRON_HELMET: armour('Iron Helmet', MASK_HELMET, 'ar_iron_helmet', [206, 206, 212], 0, 'head', 2),
-    IRON_CHESTPLATE: armour('Iron Chestplate', MASK_CHEST, 'ar_iron_chest', [206, 206, 212], 0, 'chest', 6),
-    IRON_LEGGINGS: armour('Iron Leggings', MASK_LEGS, 'ar_iron_legs', [206, 206, 212], 0, 'legs', 5),
-    IRON_BOOTS: armour('Iron Boots', MASK_BOOTS, 'ar_iron_boots', [206, 206, 212], 0, 'feet', 2),
+    IRON_HELMET: armour('Iron Helmet', MASK_HELMET, 'ar_iron_helmet', [206, 206, 212], 'head', 2),
+    IRON_CHESTPLATE: armour('Iron Chestplate', MASK_CHEST, 'ar_iron_chest', [206, 206, 212], 'chest', 6),
+    IRON_LEGGINGS: armour('Iron Leggings', MASK_LEGS, 'ar_iron_legs', [206, 206, 212], 'legs', 5),
+    IRON_BOOTS: armour('Iron Boots', MASK_BOOTS, 'ar_iron_boots', [206, 206, 212], 'feet', 2),
 
-    GOLD_HELMET: armour('Golden Helmet', MASK_HELMET, 'ar_gold_helmet', [230, 196, 76], 0, 'head', 2),
-    GOLD_CHESTPLATE: armour('Golden Chestplate', MASK_CHEST, 'ar_gold_chest', [230, 196, 76], 0, 'chest', 5),
-    GOLD_LEGGINGS: armour('Golden Leggings', MASK_LEGS, 'ar_gold_legs', [230, 196, 76], 0, 'legs', 3),
-    GOLD_BOOTS: armour('Golden Boots', MASK_BOOTS, 'ar_gold_boots', [230, 196, 76], 0, 'feet', 1),
+    GOLD_HELMET: armour('Golden Helmet', MASK_HELMET, 'ar_gold_helmet', [230, 196, 76], 'head', 2),
+    GOLD_CHESTPLATE: armour('Golden Chestplate', MASK_CHEST, 'ar_gold_chest', [230, 196, 76], 'chest', 5),
+    GOLD_LEGGINGS: armour('Golden Leggings', MASK_LEGS, 'ar_gold_legs', [230, 196, 76], 'legs', 3),
+    GOLD_BOOTS: armour('Golden Boots', MASK_BOOTS, 'ar_gold_boots', [230, 196, 76], 'feet', 1),
 
-    DIAMOND_HELMET: armour('Diamond Helmet', MASK_HELMET, 'ar_dia_helmet', [104, 224, 222], 0, 'head', 3),
-    DIAMOND_CHESTPLATE: armour('Diamond Chestplate', MASK_CHEST, 'ar_dia_chest', [104, 224, 222], 0, 'chest', 8),
-    DIAMOND_LEGGINGS: armour('Diamond Leggings', MASK_LEGS, 'ar_dia_legs', [104, 224, 222], 0, 'legs', 6),
-    DIAMOND_BOOTS: armour('Diamond Boots', MASK_BOOTS, 'ar_dia_boots', [104, 224, 222], 0, 'feet', 3),
+    DIAMOND_HELMET: armour('Diamond Helmet', MASK_HELMET, 'ar_dia_helmet', [104, 224, 222], 'head', 3),
+    DIAMOND_CHESTPLATE: armour('Diamond Chestplate', MASK_CHEST, 'ar_dia_chest', [104, 224, 222], 'chest', 8),
+    DIAMOND_LEGGINGS: armour('Diamond Leggings', MASK_LEGS, 'ar_dia_legs', [104, 224, 222], 'legs', 6),
+    DIAMOND_BOOTS: armour('Diamond Boots', MASK_BOOTS, 'ar_dia_boots', [104, 224, 222], 'feet', 3),
 
-    FLINT: defItem('Flint', spriteTile('it_flint', MASK_GEM, { D: [96, 96, 102] })),
+    FLINT: defItem('Flint', spriteTile('it_flint', MASK_GEM, shades([88, 88, 94]))),
     FLINT_AND_STEEL: defItem('Flint and Steel',
-      spriteTile('it_flint_steel', MASK_FLINT_STEEL, { S: [206, 206, 212], F: [96, 96, 102] }), { igniter: true }),
+      spriteTile('it_flint_steel', MASK_FLINT_STEEL, Object.assign(shades([206, 206, 212]), { F: [96, 96, 102], f: [64, 64, 70] })), { igniter: true }),
 
-    LEATHER: defItem('Leather', spriteTile('it_leather', MASK_INGOT, { I: [154, 110, 72] })),
+    LEATHER: defItem('Leather', spriteTile('it_leather', MASK_HIDE, shades([154, 110, 72]))),
 
-    PORKCHOP: defItem('Raw Porkchop', spriteTile('it_porkchop', MASK_MEAT, { M: [236, 148, 148], B: [232, 228, 214] }), { food: 4 }),
-    BEEF: defItem('Raw Beef', spriteTile('it_beef', MASK_MEAT, { M: [196, 78, 72], B: [232, 228, 214] }), { food: 4 }),
-    CHICKEN: defItem('Raw Chicken', spriteTile('it_chicken', MASK_MEAT, { M: [226, 178, 152], B: [232, 228, 214] }), { food: 3 }),
-    MUTTON: defItem('Raw Mutton', spriteTile('it_mutton', MASK_MEAT, { M: [214, 110, 100], B: [232, 228, 214] }), { food: 4 }),
-    COOKED_PORKCHOP: defItem('Cooked Porkchop', spriteTile('it_cooked_pork', MASK_MEAT, { M: [204, 132, 80], B: [232, 228, 214] }), { food: 8 }),
-    COOKED_BEEF: defItem('Steak', spriteTile('it_steak', MASK_MEAT, { M: [156, 82, 54], B: [232, 228, 214] }), { food: 8 }),
-    COOKED_CHICKEN: defItem('Cooked Chicken', spriteTile('it_cooked_chicken', MASK_MEAT, { M: [196, 146, 92], B: [232, 228, 214] }), { food: 6 }),
-    COOKED_MUTTON: defItem('Cooked Mutton', spriteTile('it_cooked_mutton', MASK_MEAT, { M: [176, 96, 68], B: [232, 228, 214] }), { food: 6 }),
+    PORKCHOP: defItem('Raw Porkchop', spriteTile('it_porkchop', MASK_MEAT, Object.assign(shades([236, 148, 148]), { B: [232, 228, 214] })), { food: 4 }),
+    BEEF: defItem('Raw Beef', spriteTile('it_beef', MASK_MEAT, Object.assign(shades([196, 78, 72]), { B: [232, 228, 214] })), { food: 4 }),
+    CHICKEN: defItem('Raw Chicken', spriteTile('it_chicken', MASK_MEAT, Object.assign(shades([226, 178, 152]), { B: [232, 228, 214] })), { food: 3 }),
+    MUTTON: defItem('Raw Mutton', spriteTile('it_mutton', MASK_MEAT, Object.assign(shades([214, 110, 100]), { B: [232, 228, 214] })), { food: 4 }),
+    COOKED_PORKCHOP: defItem('Cooked Porkchop', spriteTile('it_cooked_pork', MASK_MEAT, Object.assign(shades([204, 132, 80]), { B: [232, 228, 214] })), { food: 8 }),
+    COOKED_BEEF: defItem('Steak', spriteTile('it_steak', MASK_MEAT, Object.assign(shades([156, 82, 54]), { B: [232, 228, 214] })), { food: 8 }),
+    COOKED_CHICKEN: defItem('Cooked Chicken', spriteTile('it_cooked_chicken', MASK_MEAT, Object.assign(shades([196, 146, 92]), { B: [232, 228, 214] })), { food: 6 }),
+    COOKED_MUTTON: defItem('Cooked Mutton', spriteTile('it_cooked_mutton', MASK_MEAT, Object.assign(shades([176, 96, 68]), { B: [232, 228, 214] })), { food: 6 }),
 
-    ENDER_PEARL: defItem('Ender Pearl', spriteTile('it_pearl', MASK_GEM, { D: [46, 132, 122] }), { pearl: true }),
-    EYE_OF_ENDER: defItem('Eye of Ender', spriteTile('it_eye', MASK_GEM, { D: [104, 214, 172] }), { eye: true }),
+    ENDER_PEARL: defItem('Ender Pearl', spriteTile('it_pearl', MASK_ORB, shades([46, 132, 122])), { pearl: true }),
+    EYE_OF_ENDER: defItem('Eye of Ender', spriteTile('it_eye', MASK_ORB, shades([104, 214, 172])), { eye: true }),
 
-    ROTTEN_FLESH: defItem('Rotten Flesh', spriteTile('it_rotten', MASK_MEAT, { M: [126, 152, 96], B: [200, 206, 180] }), { food: 2 }),
+    ROTTEN_FLESH: defItem('Rotten Flesh', spriteTile('it_rotten', MASK_MEAT, Object.assign(shades([126, 152, 96]), { B: [232, 228, 214] })), { food: 2 }),
 
-    FEATHER: defItem('Feather', spriteTile('it_feather', MASK_STICK, { S: [236, 236, 238] })),
+    FEATHER: defItem('Feather', spriteTile('it_feather', MASK_FEATHER, shades([232, 232, 236]))),
   };
 
   defineUiSprites();
@@ -1959,7 +2128,7 @@ function defineItems() {
     for (const kind in TOOL_SHAPES) {
       const name = mat + ' ' + kind[0].toUpperCase() + kind.slice(1);
       const key = 'to_' + mat.toLowerCase() + '_' + kind;
-      const id = defItem(name, spriteTile(key, TOOL_SHAPES[kind], { M: HEADS[mat], S: [140, 102, 60] }),
+      const id = defItem(name, spriteTile(key, TOOL_SHAPES[kind], Object.assign(shades(HEADS[mat]), HAFT)),
         { tool: kind, tier: TIERS[mat] });
       itemDef(id).damage = kind === 'axe' ? TIERS[mat] + 2 : kind === 'pickaxe' ? TIERS[mat] + 1 : TIERS[mat];
       I[mat.toUpperCase() + '_' + kind.toUpperCase()] = id;
@@ -1968,10 +2137,10 @@ function defineItems() {
 
   // leather armour, the set you can make before you ever find iron
   const lea = [174, 126, 84];
-  I.LEATHER_HELMET = armour('Leather Cap', MASK_HELMET, 'ar_leather_helmet', lea, 0, 'head', 1);
-  I.LEATHER_CHESTPLATE = armour('Leather Tunic', MASK_CHEST, 'ar_leather_chest', lea, 0, 'chest', 3);
-  I.LEATHER_LEGGINGS = armour('Leather Trousers', MASK_LEGS, 'ar_leather_legs', lea, 0, 'legs', 2);
-  I.LEATHER_BOOTS = armour('Leather Boots', MASK_BOOTS, 'ar_leather_boots', lea, 0, 'feet', 1);
+  I.LEATHER_HELMET = armour('Leather Cap', MASK_HELMET, 'ar_leather_helmet', lea, 'head', 1);
+  I.LEATHER_CHESTPLATE = armour('Leather Tunic', MASK_CHEST, 'ar_leather_chest', lea, 'chest', 3);
+  I.LEATHER_LEGGINGS = armour('Leather Trousers', MASK_LEGS, 'ar_leather_legs', lea, 'legs', 2);
+  I.LEATHER_BOOTS = armour('Leather Boots', MASK_BOOTS, 'ar_leather_boots', lea, 'feet', 1);
 
   // sword damage, in half-hearts, matching Minecraft's ladder
   const dmg = { WOOD_SWORD: 4, STONE_SWORD: 5, IRON_SWORD: 6, GOLD_SWORD: 4, DIAMOND_SWORD: 7 };
@@ -2147,7 +2316,7 @@ class World {
 
   getBlock(x, y, z) {
     // the End has nothing under it: step off the island and you fall out of the world
-    if (y < 0) return this.dimension === 'end' ? 0 : B.BEDROCK;
+    if (y < 0) return (this.dimension === 'end' || this.dimension === 'bedwars' || this.dimension === 'rush' || this.dimension === 'hunger') ? 0 : B.BEDROCK;
     if (y >= CY) return 0;
     const c = this.chunks.get(this.key(x >> 4, z >> 4));
     if (!c) return 0;
@@ -2218,6 +2387,8 @@ class World {
   generateChunk(cx, cz) {
     if (this.dimension === 'nether') return this.generateNether(cx, cz);
     if (this.dimension === 'end') return this.generateEnd(cx, cz);
+    if (this.dimension === 'bedwars' || this.dimension === 'rush') return BedWars.generateChunk(this, cx, cz);
+    if (this.dimension === 'hunger') return Hunger.generateChunk(this, cx, cz);
     const c = new Chunk(cx, cz);
     this.chunks.set(this.key(cx, cz), c);
     const bx = cx * CX, bz = cz * CZ;
@@ -4412,6 +4583,7 @@ class Mob {
   }
 
   update(dt, world, player) {
+    if (this.def.bot) return (this.def.arena === 'hunger' ? Hunger : BedWars).botUpdate(this, dt, world, player);
     if (this.def.flies) return this.flyUpdate(dt, world, player);
     const inWater = isLiquid(world.getBlock(Math.floor(this.x), Math.floor(this.y + 0.1), Math.floor(this.z)));
 
@@ -4651,6 +4823,7 @@ const Animals = {
     const maxD = viewDist * CX + 26;
     this.list = this.list.filter(m => {
       if (m.dead) return false;
+      if (m.def.bot) return true;              // match bots live until the match kills them
       if (Math.abs(m.x - player.pos[0]) > maxD || Math.abs(m.z - player.pos[2]) > maxD) return false;
       return !!world.getChunk(Math.floor(m.x) >> 4, Math.floor(m.z) >> 4);
     });
@@ -4815,6 +4988,1395 @@ const Animals = {
     Sound.burst({ dur: 0.2, freq: 240, gain: 0.4, sweep: 0.3 });
   },
 };
+</script>
+<script>
+// ===== js/bedwars.js =====
+// Bed Wars — four teams on floating islands, the way the Hive's Treasure Wars
+// plays. Generators tick out iron and gold at every base, the shop turns that
+// into blocks and gear, and a team stops respawning the moment its bed goes.
+// You are one player; the other seats are filled by bots that farm their island,
+// bridge across the void and come for your bed.
+
+const BW_Y = 64;              // the surface of every base island
+const BW_R = 46;              // how far each base sits from the middle
+const BW_PREP = 24;           // seconds of quiet before the bots set off
+const BW_TEAM_SIZE = 2;       // players per team, you included
+
+const BW_TEAMS = [
+  { key: 'red',    name: 'Red',    at: [-BW_R, 0], wool: 'RED_WOOL',    css: '#e0574f' },
+  { key: 'blue',   name: 'Blue',   at: [BW_R, 0],  wool: 'BLUE_WOOL',   css: '#5b8bea' },
+  { key: 'green',  name: 'Green',  at: [0, -BW_R], wool: 'GREEN_WOOL',  css: '#5ec06a' },
+  { key: 'yellow', name: 'Yellow', at: [0, BW_R],  wool: 'YELLOW_WOOL', css: '#e3c34a' },
+];
+
+// Where each side sits, for however many sides are playing.
+const BW_ANGLES = [Math.PI, 0, -Math.PI / 2, Math.PI / 2];
+
+// Two ways to play the same game: the long version on four islands, and Rush —
+// two sides close enough to be at each other's beds inside a minute.
+const BW_VARIANTS = {
+  classic: { label: 'Bed Wars', R: BW_R, prep: BW_PREP, sides: 4, size: 2,
+             iron: 1.6, gold: 9, mid: 30, diamonds: true, midY: BW_Y + 1,
+             roles: ['rusher', 'rusher', 'raider', 'collector', 'defender', 'duelist'] },
+  rush:    { label: 'Rush', R: 24, prep: 5, sides: 2, size: 2,
+             iron: 0.8, gold: 4.5, mid: 14, diamonds: false, midY: BW_Y,
+             roles: ['rusher', 'rusher', 'rusher', 'raider', 'duelist'] },
+};
+
+const BedWars = {
+  v: null,                    // the variant being played
+  variantKey: 'classic',
+  active: false,
+  phase: 'idle',              // idle | playing | over
+  teams: [],
+  islands: [],
+  bots: [],
+  placed: new Set(),          // "x,y,z" of everything put down during the match
+  queue: [],                  // bots waiting to come back, by match time
+  clock: 0,
+  you: null,                  // the team you are on
+  result: '',
+
+  // ---- setup -----------------------------------------------------------
+  // One team object per colour: where it spawns, where its bed lies, and which
+  // way it faces the middle.
+  // The islands, as squares: bases spaced around the middle, one shared island
+  // at the centre and, in the long game, diamond islands on the diagonals.
+  islandList() {
+    const v = this.v;
+    const list = this.teams.map(t => ({ x: t.home[0], z: t.home[1], half: 7, y: BW_Y, block: B.SANDSTONE, base: t.key }));
+    list.push({ x: 0, z: 0, half: 6, y: v.midY, block: B.STONE_BRICKS, middle: true });
+    if (v.diamonds) {
+      for (const [sx, sz] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+        list.push({ x: sx * 30, z: sz * 30, half: 3, y: BW_Y + 2, block: B.STONE_BRICKS, diamond: true });
+      }
+    }
+    return list;
+  },
+
+  buildTeams() {
+    const v = this.v;
+    this.teams = BW_TEAMS.slice(0, v.sides).map((def, i) => {
+      const a = BW_ANGLES[i];
+      const hx = Math.round(Math.cos(a) * v.R), hz = Math.round(Math.sin(a) * v.R);
+      const len = Math.hypot(hx, hz) || 1;
+      const toC = [-hx / len, -hz / len];                 // unit vector towards the middle
+      const perp = [-toC[1], toC[0]];
+      const r = (v, s) => Math.round(v * s);
+      const bedX = hx + r(toC[0], -4), bedZ = hz + r(toC[1], -4);
+      return {
+        key: def.key, name: def.name, css: def.css, wool: B[def.wool],
+        home: [hx, hz], toC, perp,
+        spawn: [hx + 0.5, BW_Y + 1, hz + 0.5],
+        bed: [bedX, BW_Y + 1, bedZ],                       // the foot; the head is one further out
+        bedHead: [bedX + r(toC[0], -1), BW_Y + 1, bedZ + r(toC[1], -1)],
+        gen: [hx + r(toC[0], 3), BW_Y + 1, hz + r(toC[1], 3)],
+        shop: [hx + r(perp[0], 4), BW_Y + 1, hz + r(perp[1], 4)],
+        bedAlive: true, alive: v.size, out: false,
+        ironTimer: 0, goldTimer: 4, tier: 0,
+      };
+    });
+    this.islands = this.islandList();
+  },
+
+  teamAt(key) { return this.teams.find(t => t.key === key); },
+
+  // ---- world generation ------------------------------------------------
+  islandAt(wx, wz) {
+    for (const isl of this.islands) {
+      const dx = Math.abs(wx - isl.x), dz = Math.abs(wz - isl.z);
+      if (dx > isl.half || dz > isl.half) continue;
+      // thicker in the middle, so each island reads as something floating
+      const inset = isl.half - Math.max(dx, dz);
+      return { isl, top: isl.y, thick: Math.min(5, 2 + inset) };
+    }
+    return null;
+  },
+
+  generateChunk(world, cx, cz) {
+    const c = new Chunk(cx, cz);
+    world.chunks.set(world.key(cx, cz), c);
+    const bx = cx * CX, bz = cz * CZ;
+    const blocks = c.blocks;
+    const put = (lx, y, lz, id) => { if (y >= 0 && y < CY) blocks[colOffset(lx, lz) + y * CX * CZ] = id; };
+
+    for (let lz = 0; lz < CZ; lz++) for (let lx = 0; lx < CX; lx++) {
+      const wx = bx + lx, wz = bz + lz;
+      const hit = this.islandAt(wx, wz);
+      if (!hit) continue;
+      for (let y = hit.top - hit.thick + 1; y <= hit.top; y++) put(lx, y, lz, hit.isl.block);
+      // every base wears its colour in the middle, so you always know whose island you are on
+      if (hit.isl.base) {
+        const t = this.teamAt(hit.isl.base);
+        if (t && Math.abs(wx - t.home[0]) <= 2 && Math.abs(wz - t.home[1]) <= 2) put(lx, hit.top, lz, t.wool);
+      }
+    }
+
+    // beds and generator markers, placed from the team table so every chunk agrees
+    for (const t of this.teams) {
+      const mark = (p, id) => {
+        const lx = p[0] - bx, lz = p[2] - bz;
+        if (lx < 0 || lz < 0 || lx >= CX || lz >= CZ) return;
+        put(lx, p[1], lz, id);
+      };
+      if (t.bedAlive) { mark(t.bed, B.BED_FOOT); mark(t.bedHead, B.BED_HEAD); }
+      mark([t.gen[0], BW_Y, t.gen[2]], B.IRON_ORE);
+      mark([t.shop[0], BW_Y, t.shop[2]], B.PLANKS);
+    }
+    for (const isl of this.islands) {
+      if (!isl.diamond && !isl.middle) continue;
+      const lx = isl.x - bx, lz = isl.z - bz;
+      if (lx < 0 || lz < 0 || lx >= CX || lz >= CZ) continue;
+      put(lx, isl.y, lz, isl.diamond ? B.DIAMOND_ORE : B.EMERALD_ORE);
+    }
+
+    if (world.edits.size) {
+      for (const [k, id] of world.edits) {
+        const p = k.split(',');
+        const x = +p[0], y = +p[1], z = +p[2];
+        if ((x >> 4) === cx && (z >> 4) === cz) blocks[idx(x & 15, y, z & 15)] = id;
+      }
+    }
+    world.rebuildHeightmap(c);
+    c.empty = !blocks.some(v => v !== 0);
+    world.initLight(c);
+    for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+      const nb = world.getChunk(cx + dx, cz + dz);
+      if (nb) nb.dirty = true;
+    }
+    return c;
+  },
+
+  // ---- the match -------------------------------------------------------
+  start(game, variant) {
+    this.v = BW_VARIANTS[variant || this.variantKey || 'classic'];
+    this.variantKey = variant || this.variantKey || 'classic';
+    this.buildTeams();
+    this.placed.clear();
+    this.bots.length = 0;
+    this.queue.length = 0;
+    this.clock = 0;
+    this.phase = 'playing';
+    this.active = true;
+    this.result = '';
+    this.hintDone = false;
+    this.you = this.teams[0];                       // you are always Red
+
+    const world = game.worlds.bedwars;
+    world.edits.clear();
+    for (const c of world.chunks.values()) {                 // a rematch rebuilds the arena from scratch
+      if (c.mesh) { game.renderer.freeMesh(c.mesh.solid); game.renderer.freeMesh(c.mesh.fluid); }
+    }
+    world.chunks.clear();
+    for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) {
+      const [hx, hz] = this.you.home;
+      world.generateChunk((hx >> 4) + dx, (hz >> 4) + dz);
+    }
+
+    // your ally guards home; every other team fields a full side
+    for (const t of this.teams) {
+      const bots = t === this.you ? this.v.size - 1 : this.v.size;
+      for (let i = 0; i < bots; i++) Animals.list.push(this.spawnBot(t, i === 0 && t === this.you));
+    }
+    for (const t of this.teams) {                    // a shopkeeper at every base
+      const shop = new Mob('bw_shop', t.shop[0] + 0.5, t.shop[1], t.shop[2] + 0.5, 0);
+      shop.bwShop = t.key;
+      Animals.list.push(shop);
+    }
+    this.announce(this.v.label + ' — protect your bed');
+  },
+
+  spawnPoint() { return this.you.spawn.slice(); },
+
+  stop() {
+    this.active = false;
+    this.phase = 'idle';
+    this.bots.length = 0;
+    this.placed.clear();
+    document.getElementById('arenaboard').classList.add('hidden');
+    document.getElementById('arenaend').classList.add('hidden');
+  },
+
+  spawnBot(team, keeper) {
+    const jitter = () => (Math.random() - 0.5) * 3;
+    const mob = new Mob('bot_' + team.key, team.spawn[0] + jitter(), team.spawn[1], team.spawn[2] + jitter(), 0);
+    mob.bwTeam = team.key;
+    mob.bwKeeper = !!keeper;                        // an ally who never leaves home
+    mob.bwBlocks = 220;
+    mob.attackCd = 0;
+    mob.bwSpeed = mob.def.speed * (0.8 + Math.random() * 0.5);   // none of them move alike
+    mob.bwPrep = this.v.prep * (0.55 + Math.random() * 0.9);         // and none set off together
+    this.rollPlan(mob, team);
+    this.bots.push(mob);
+    return mob;
+  },
+
+  // Bots are not all the same player. Each picks a way of playing, someone to
+  // pick on and a line to come in on, and thinks better of it every so often —
+  // so a match is never the same three raiders walking the same path twice.
+  ROLES: ['rusher', 'rusher', 'raider', 'collector', 'defender', 'duelist'],
+
+  rollPlan(mob, team) {
+    mob.bwPlan = 14 + Math.random() * 22;           // seconds before it reconsiders
+    if (mob.bwKeeper) { mob.bwRole = 'defender'; return; }
+    const roles = this.v.roles || this.ROLES;
+    mob.bwRole = roles[(Math.random() * roles.length) | 0];
+    // a side always has somebody actually going for a bed, however the dice fell
+    const pushing = this.bots.some(b => b !== mob && b.bwTeam === team.key && !b.bwKeeper &&
+                                        (b.bwRole === 'rusher' || b.bwRole === 'raider'));
+    if (!pushing) mob.bwRole = 'rusher';
+    const others = this.teams.filter(t => t !== team && !t.out);
+    mob.bwTarget = others.length ? others[(Math.random() * others.length) | 0].key : null;
+    const a = Math.random() * Math.PI * 2, r = 3 + Math.random() * 8;
+    mob.bwSwing = [Math.cos(a) * r, Math.sin(a) * r];             // comes in off to one side
+  },
+
+  // The middle and the diamond islands, for whoever fancies gathering first.
+  nearestShared(mob) {
+    let best = null, bd = 1e9;
+    for (const isl of this.islands) {
+      if (!isl.diamond && !isl.middle) continue;
+      const d = Math.hypot(isl.x - mob.x, isl.z - mob.z);
+      if (d < bd) { bd = d; best = isl; }
+    }
+    return best;
+  },
+
+  // ---- rules -----------------------------------------------------------
+  key(x, y, z) { return x + ',' + y + ',' + z; },
+  notePlaced(x, y, z) { if (this.active) this.placed.add(this.key(x, y, z)); },
+
+  // Only what somebody put down during the match comes back up — and beds.
+  canBreak(x, y, z, id) {
+    if (!this.active) return true;
+    if (id === B.BED_FOOT || id === B.BED_HEAD) return true;
+    return this.placed.has(this.key(x, y, z));
+  },
+
+  // A bed is gone: that team is on its last life.
+  bedAt(x, y, z) {
+    for (const t of this.teams) {
+      if (!t.bedAlive) continue;
+      for (const p of [t.bed, t.bedHead]) {
+        if (p[0] === x && p[1] === y && p[2] === z) return t;
+      }
+    }
+    return null;
+  },
+
+  breakBed(team, byName) {
+    if (!team.bedAlive) return;
+    team.bedAlive = false;
+    const w = Game.world;
+    w.setBlock(team.bed[0], team.bed[1], team.bed[2], 0);
+    w.setBlock(team.bedHead[0], team.bedHead[1], team.bedHead[2], 0);
+    this.announce(team.name + '’s bed was destroyed by ' + byName);
+    Sound.burst({ dur: 0.7, freq: 180, gain: 0.5, sweep: 0.25 });
+    this.refreshBoard();
+  },
+
+  announce(text) {
+    Game.toast(text);
+    const el = document.getElementById('arenanews');
+    if (!el) return;
+    el.textContent = text;
+    el.classList.remove('hidden');
+    clearTimeout(this._newsTimer);
+    this._newsTimer = setTimeout(() => el.classList.add('hidden'), 4000);
+  },
+
+  // ---- generators ------------------------------------------------------
+  runGenerators(dt, world, player) {
+    for (const t of this.teams) {
+      if (t.out) continue;
+      t.ironTimer -= dt;
+      if (t.ironTimer <= 0) {
+        t.ironTimer = this.v.iron;
+        Drops.spawn(world, t.gen[0] + 0.5, t.gen[1] + 0.4, t.gen[2] + 0.5, I.IRON_INGOT, 1, 0.4);
+      }
+      t.goldTimer -= dt;
+      if (t.goldTimer <= 0) {
+        t.goldTimer = this.v.gold;
+        Drops.spawn(world, t.gen[0] + 0.5, t.gen[1] + 0.4, t.gen[2] + 0.5, I.GOLD_INGOT, 1, 0.4);
+      }
+    }
+    this.midTimer = (this.midTimer === undefined ? 20 : this.midTimer) - dt;
+    if (this.midTimer <= 0) {
+      this.midTimer = this.v.mid;
+      for (const isl of this.islands) {
+        if (!isl.diamond && !isl.middle) continue;
+        Drops.spawn(world, isl.x + 0.5, isl.y + 1.4, isl.z + 0.5,
+          isl.diamond ? I.DIAMOND : I.EMERALD, 1, 0.4);
+      }
+    }
+    // bots tidy up their own base, which is what farming looks like from outside
+    for (let i = Drops.list.length - 1; i >= 0; i--) {
+      const d = Drops.list[i];
+      if (Math.hypot(d.x - player.pos[0], d.z - player.pos[2]) < 12) continue;
+      for (const t of this.teams) {
+        if (t === this.you || t.out) continue;
+        if (Math.hypot(d.x - t.gen[0], d.z - t.gen[2]) < 4) { Drops.list.splice(i, 1); break; }
+      }
+    }
+  },
+
+  // ---- bot brains ------------------------------------------------------
+  // Bots do three things: hold their island, walk a straight line at whoever
+  // they are raiding, and lay a block under themselves when the floor runs out.
+  botUpdate(mob, dt, world, player) {
+    if (mob.bwShop) {                                  // a shopkeeper only turns to face you
+      mob.walking = false;
+      mob.vy -= GRAVITY_MOB * dt;
+      mob.moveAxis(world, 1, mob.vy * dt);
+      const dx = player.pos[0] - mob.x, dz = player.pos[2] - mob.z;
+      if (dx * dx + dz * dz < 64) mob.yaw += clamp(Math.atan2(dx, -dz) - mob.yaw, -2 * dt, 2 * dt);
+      mob.swing = 0; mob.airborne = false;
+      const li = world.getLight(Math.floor(mob.x), Math.floor(mob.y + 1), Math.floor(mob.z));
+      mob.sky = (li >> 4) / 15; mob.blk = (li & 15) / 15;
+      return;
+    }
+    const team = this.teamAt(mob.bwTeam);
+    if (!team || !this.active || this.phase !== 'playing') { mob.walking = false; return; }
+    mob.attackCd = Math.max(0, (mob.attackCd || 0) - dt);
+    mob.bwBreak = Math.max(0, (mob.bwBreak || 0) - dt * 0);
+
+    mob.bwPlan = (mob.bwPlan || 0) - dt;
+    if (mob.bwPlan <= 0) this.rollPlan(mob, team);
+
+    const target = this.botTarget(mob, team, player);
+    let goal = target ? target.at : null;
+    if (!goal) goal = [team.spawn[0], team.spawn[2]];
+
+    const dx = goal[0] - mob.x, dz = goal[1] - mob.z;
+    const dist = Math.hypot(dx, dz);
+    mob.targetYaw = Math.atan2(dx, -dz);
+    let d = mob.targetYaw - mob.yaw;
+    while (d > Math.PI) d -= Math.PI * 2;
+    while (d < -Math.PI) d += Math.PI * 2;
+    mob.yaw += clamp(d, -5 * dt, 5 * dt);
+    mob.walking = dist > (target && target.kind === 'wander' ? 0.8 : 1.4);
+
+    // bridging: if the next step is over nothing, put a block there first
+    if (mob.walking && mob.onGround && mob.bwBlocks > 0) {
+      const fy = Math.floor(mob.y) - 1;
+      for (const ahead of [0.8, 1.5]) {
+        const nx = Math.floor(mob.x + Math.sin(mob.yaw) * ahead);
+        const nz = Math.floor(mob.z - Math.cos(mob.yaw) * ahead);
+        if (isSolid(world.getBlock(nx, fy, nz))) continue;
+        world.setBlock(nx, fy, nz, team.wool);
+        this.notePlaced(nx, fy, nz);
+        mob.bwBlocks--;
+        mob.vx *= 0.6; mob.vz *= 0.6;
+        break;
+      }
+    }
+    // back on its own island it restocks, the way a player would
+    if (Math.hypot(mob.x - team.home[0], mob.z - team.home[1]) < 8) mob.bwBlocks = 220;
+
+    // walking, falling and stepping up, the same way the animals do it
+    const speed = (mob.bwSpeed || mob.def.speed) * (mob.walking ? 1 : 0);
+    const fx = Math.sin(mob.yaw) * speed, fz = -Math.cos(mob.yaw) * speed;
+    const blend = 1 - Math.exp(-(mob.onGround ? 12 : 3) * dt);
+    mob.vx += (fx - mob.vx) * blend;
+    mob.vz += (fz - mob.vz) * blend;
+    mob.vy -= GRAVITY_MOB * dt;
+    if (mob.vy < -45) mob.vy = -45;
+    mob.onGround = false;
+    const steps = Math.max(1, Math.ceil(Math.hypot(mob.vx, mob.vy, mob.vz) * dt / 0.25));
+    let blocked = false;
+    for (let i = 0; i < steps; i++) {
+      mob.moveAxis(world, 1, mob.vy * dt / steps);
+      blocked = mob.moveAxis(world, 0, mob.vx * dt / steps) || blocked;
+      blocked = mob.moveAxis(world, 2, mob.vz * dt / steps) || blocked;
+    }
+    if (blocked && mob.onGround) {
+      const head = world.getBlock(Math.floor(mob.x), Math.floor(mob.y + mob.def.height + 0.6), Math.floor(mob.z));
+      if (!isSolid(head)) mob.vy = 7.6;
+    }
+    if (mob.y < BW_Y - 24) { this.botDied(mob, 'the void'); return; }
+
+    // what it does once it gets there
+    if (target && target.kind === 'bed') {
+      const bed = target.team.bed;
+      if (Math.hypot(bed[0] - mob.x, bed[2] - mob.z) < 2.4) {
+        mob.bwBreakTimer = (mob.bwBreakTimer || 0) + dt;
+        if (mob.bwBreakTimer > 2.5 + Math.random()) {
+          mob.bwBreakTimer = 0;
+          this.breakBed(target.team, team.name);
+        }
+      } else mob.bwBreakTimer = 0;
+    } else {
+      mob.bwBreakTimer = 0;
+      if (target && target.kind === 'foe' && dist < 2.4 && mob.attackCd <= 0) {
+        mob.attackCd = 0.7 + Math.random() * 0.7;
+        mob.swing = 1;
+        this.botStrike(mob, team, target, player);
+      }
+    }
+
+    // They never come looking for you — you are not on the list of things worth
+    // walking towards — but get inside arm's reach of one and it will swing.
+    if (team !== this.you && !player.dead && mob.attackCd <= 0) {
+      const pdx = player.pos[0] - mob.x, pdz = player.pos[2] - mob.z;
+      if (Math.hypot(pdx, pdz) < 2.3 && Math.abs(player.pos[1] - mob.y) < 2.3) {
+        mob.attackCd = 0.7 + Math.random() * 0.7;
+        mob.swing = 1;
+        mob.targetYaw = Math.atan2(pdx, -pdz);          // turn on you as it hits
+        this.strikePlayer(mob, team, player);
+      }
+    }
+
+    const hspeed = Math.hypot(mob.vx, mob.vz);
+    mob.walkPhase += dt * hspeed * 5.5;
+    mob.swing = Math.min(1, hspeed / mob.def.speed);
+    mob.airborne = !mob.onGround;
+    if (mob.hurt > 0) mob.hurt -= dt;
+    const l = world.getLight(Math.floor(mob.x), Math.floor(mob.y + 1), Math.floor(mob.z));
+    mob.sky = (l >> 4) / 15; mob.blk = (l & 15) / 15;
+  },
+
+  // Nearest enemy first, then the bed it is trying to break, then home.
+  botTarget(mob, team, player) {
+    const chosen = mob.bwTarget ? this.teamAt(mob.bwTarget) : null;
+    const aim = (chosen && chosen.bedAlive && !chosen.out) ? chosen : this.raidTarget(team);
+
+    // once it is standing over a bed, nothing else matters
+    if (aim && !mob.bwKeeper && Math.hypot(aim.bed[0] - mob.x, aim.bed[2] - mob.z) < 8) {
+      return { kind: 'bed', at: [aim.bed[0], aim.bed[2]], team: aim };
+    }
+
+    // how far it will go out of its way for a fight depends on the sort it is
+    const reach = mob.bwRole === 'duelist' ? 40 : mob.bwRole === 'defender' ? 20 : 9;
+    const foe = this.nearestFoe(mob, team, player);
+
+    // You are worth chasing too, though from closer in than they chase each
+    // other: wander into their half and they will come, but they will not cross
+    // the map for you.
+    if (team !== this.you && !player.dead) {
+      const pd = Math.hypot(player.pos[0] - mob.x, player.pos[2] - mob.z);
+      const chase = mob.bwRole === 'duelist' ? 16 : mob.bwRole === 'defender' ? 12 : 7;
+      if (pd < chase && Math.abs(player.pos[1] - mob.y) < 5 && (!foe || pd < foe.d)) {
+        return { kind: 'foe', at: [player.pos[0], player.pos[2]] };
+      }
+    }
+
+    if (foe && foe.d < reach) return { kind: 'foe', at: [foe.x, foe.z], mob: foe.mob };
+
+    if (mob.bwRole === 'defender' || mob.bwKeeper) {
+      const b = team.bed, a = this.clock * 0.5 + mob.x;
+      return { kind: 'wander', at: [b[0] + Math.cos(a) * 3, b[2] + Math.sin(a) * 3] };
+    }
+    if (this.clock < (mob.bwPrep || this.v.prep)) {
+      const a = (this.clock * 0.5) + (mob.x + mob.z);
+      return { kind: 'wander', at: [team.home[0] + Math.cos(a) * 4, team.home[1] + Math.sin(a) * 4] };
+    }
+    if (mob.bwRole === 'collector') {
+      const isl = this.nearestShared(mob);
+      if (isl) return { kind: 'wander', at: [isl.x, isl.z] };
+    }
+    if (aim) {
+      const sw = mob.bwSwing || [0, 0];
+      const far = Math.hypot(aim.bed[0] - mob.x, aim.bed[2] - mob.z) > 16;
+      return { kind: 'bed', team: aim,
+               at: far ? [aim.bed[0] + sw[0], aim.bed[2] + sw[1]] : [aim.bed[0], aim.bed[2]] };
+    }
+    if (foe) return { kind: 'foe', at: [foe.x, foe.z], mob: foe.mob };
+    return { kind: 'wander', at: [team.spawn[0], team.spawn[2]] };
+  },
+
+  raidTarget(team) {
+    let best = null, bestD = 1e9;
+    for (const t of this.teams) {
+      if (t === team || t.out) continue;
+      const d = Math.hypot(t.home[0] - team.home[0], t.home[1] - team.home[1]) + (t.bedAlive ? 0 : 200);
+      if (d < bestD) { bestD = d; best = t; }
+    }
+    return best && best.bedAlive ? best : null;
+  },
+
+  // Bots fight each other, never you: you are not on the list of enemies.
+  nearestFoe(mob, team, player) {
+    let best = null;
+    for (const other of this.bots) {
+      if (other === mob || other.dead || other.bwTeam === mob.bwTeam) continue;
+      const d = Math.hypot(other.x - mob.x, other.z - mob.z);
+      if (Math.abs(other.y - mob.y) > 4) continue;
+      if (!best || d < best.d) best = { d, x: other.x, z: other.z, mob: other };
+    }
+    return best;
+  },
+
+  strikePlayer(mob, team, player) {
+    Sound.burst({ dur: 0.09, freq: 460, gain: 0.3, sweep: 0.5 });
+    if (player.damage(3 + team.tier, 'a ' + team.name + ' player')) {
+      const dx = player.pos[0] - mob.x, dz = player.pos[2] - mob.z;
+      const push = 3.4 / Math.max(0.7, Math.hypot(dx, dz));
+      player.vel[0] += dx * push; player.vel[2] += dz * push; player.vel[1] = 3.2;
+    }
+  },
+
+  botStrike(mob, team, target, player) {
+    const dmg = 3 + team.tier;
+    Sound.burst({ dur: 0.09, freq: 460, gain: 0.3, sweep: 0.5 });
+    if (target.mob) {
+      const foe = target.mob;
+      foe.hp -= dmg;
+      foe.hurt = 0.3;
+      const dx = foe.x - mob.x, dz = foe.z - mob.z;
+      const push = 4 / Math.max(0.7, Math.hypot(dx, dz));
+      foe.vx += dx * push; foe.vz += dz * push; foe.vy = 3;
+      if (foe.hp <= 0) this.botDied(foe, team.name);
+    }
+  },
+
+  botDied(mob, by) {
+    if (mob.bwGone) return;                    // dead is not the same as dealt with
+    mob.bwGone = true;
+    mob.dead = true;
+    const team = this.teamAt(mob.bwTeam);
+    const i = this.bots.indexOf(mob);
+    if (i >= 0) this.bots.splice(i, 1);
+    if (!team) return;
+    if (team.bedAlive) {
+      this.queue.push({ team: team.key, keeper: mob.bwKeeper, at: this.clock + 6 });
+    } else {
+      team.alive = Math.max(0, team.alive - 1);
+      this.checkOut(team, by);
+    }
+  },
+
+  checkOut(team, by) {
+    if (team.out || team.bedAlive || team.alive > 0) return;
+    team.out = true;
+    this.announce(team.name + ' has been eliminated');
+    this.refreshBoard();
+    this.checkWin();
+  },
+
+  checkWin() {
+    const left = this.teams.filter(t => !t.out);
+    if (left.length > 1) return;
+    this.finish(left[0] === this.you ? 'You won the match' : (left[0] ? left[0].name + ' won the match' : 'Nobody survived'),
+      left[0] === this.you);
+  },
+
+  finish(text, won) {
+    if (this.phase === 'over') return;
+    this.phase = 'over';
+    this.result = text;
+    document.getElementById('arenaend-title').textContent = won ? 'Victory' : 'Game over';
+    document.getElementById('arenaend-sub').textContent = text;
+    document.getElementById('arenaend').classList.remove('hidden');
+    document.exitPointerLock();
+    Game.paused = true;
+    Sound.burst({ dur: 0.9, freq: won ? 620 : 200, gain: 0.5, sweep: won ? 0.4 : 3 });
+  },
+
+  // ---- the player ------------------------------------------------------
+  kit(game) {
+    Inventory.counts.clear();
+    Equipment.load({ head: 0, chest: 0, legs: 0, feet: 0 });
+    Inventory.add(I.WOOD_SWORD, 1);
+    Inventory.add(this.you.wool, 64);          // enough to reach the middle island
+    game.hotbar = [this.you.wool, I.WOOD_SWORD, 0, 0, 0, 0, 0, 0, 0];
+    game.selectSlot(0);                        // blocks in hand, so the first click builds
+  },
+
+  // Death is only the end once your bed has gone.
+  playerDied(game) {
+    if (this.you.bedAlive) {
+      this.announce('You were killed — back at your base');
+      game.player.spawn = this.you.spawn.slice();
+      game.player.respawn();
+      this.kit(game);
+      return true;                                   // handled: no death screen
+    }
+    // No bed means no way back, whatever the rest of your team is still doing:
+    // your team-mate's life is not yours to spend.
+    this.you.alive = 0;
+    this.you.out = true;
+    this.refreshBoard();
+    this.finish('Your bed was gone, and so are you', false);
+    return true;
+  },
+
+  update(dt, game) {
+    if (!this.active || this.phase !== 'playing') return;
+    this.clock += dt;
+    this.runGenerators(dt, game.world, game.player);
+    for (let i = this.bots.length - 1; i >= 0; i--) {
+      if (this.bots[i].dead) this.botDied(this.bots[i], 'the match');
+    }
+    for (let i = this.queue.length - 1; i >= 0; i--) {
+      const q = this.queue[i];
+      if (this.clock < q.at) continue;
+      this.queue.splice(i, 1);
+      const team = this.teamAt(q.team);
+      if (!team) continue;
+      if (team.bedAlive && !team.out) { Animals.list.push(this.spawnBot(team, q.keeper)); continue; }
+      team.alive = Math.max(0, team.alive - 1);      // the bed went while they were waiting to come back
+      this.checkOut(team, 'the match');
+    }
+    if (game.player.pos[1] < BW_Y - 26) {
+      game.player.invuln = 0;
+      game.player.damage(40, 'the void');
+    }
+    if (!this.hintDone && this.clock > 5) {
+      this.hintDone = true;
+      this.announce('Hold Shift at the edge to bridge out over the void');
+    }
+    this.arenaTimer = (this.arenaTimer || 0) - dt;
+    if (this.arenaTimer <= 0) { this.arenaTimer = 1; this.ensureArena(game.world); }
+    this.boardTimer = (this.boardTimer || 0) - dt;
+    if (this.boardTimer <= 0) { this.boardTimer = 0.5; this.refreshBoard(); }
+  },
+
+  // Chunk unloading follows the player, but the bots are fighting on the far
+  // side of the arena, so the whole map is kept in memory for the match.
+  ensureArena(world) {
+    const n = Math.ceil((this.v.R + 10) / CX);
+    for (let cx = -n; cx <= n; cx++) for (let cz = -n; cz <= n; cz++) {
+      if (!world.getChunk(cx, cz)) world.generateChunk(cx, cz);
+    }
+  },
+
+  // ---- the shop --------------------------------------------------------
+  offers() {
+    const wool = this.you ? this.you.wool : B.WOOL;
+    const iron = I.IRON_INGOT, gold = I.GOLD_INGOT, dia = I.DIAMOND, eme = I.EMERALD;
+    return [
+      { cost: [iron, 4], give: [wool, 16], note: 'Bridging blocks in your colour' },
+      { cost: [iron, 12], give: [B.STONE_BRICKS, 12], note: 'Tougher than wool' },
+      { cost: [gold, 4], give: [B.PLANKS, 8], note: 'Quick cover' },
+      { cost: [eme, 4], give: [B.OBSIDIAN, 4], note: 'What a bed defence is made of' },
+      { cost: [iron, 10], give: [I.STONE_SWORD, 1], note: 'A step up from wood' },
+      { cost: [gold, 7], give: [I.IRON_SWORD, 1], note: 'Hits for three hearts' },
+      { cost: [eme, 4], give: [I.DIAMOND_SWORD, 1], note: 'The best blade here' },
+      { cost: [iron, 12], give: 'armour-leather', note: 'A full leather set, worn at once' },
+      { cost: [gold, 12], give: 'armour-iron', note: 'A full iron set, worn at once' },
+      { cost: [eme, 6], give: 'armour-diamond', note: 'A full diamond set, worn at once' },
+      { cost: [iron, 10], give: [I.IRON_PICKAXE, 1], note: 'Breaks blocks properly' },
+      { cost: [dia, 3], give: [I.DIAMOND_PICKAXE, 1], note: 'Through obsidian in seconds' },
+      { cost: [iron, 6], give: [I.COOKED_BEEF, 2], note: 'Eat to heal' },
+      { cost: [eme, 4], give: [I.ENDER_PEARL, 1], note: 'Throw it and land where it lands' },
+    ];
+  },
+
+  ARMOUR_SETS: {
+    'armour-leather': ['LEATHER_HELMET', 'LEATHER_CHESTPLATE', 'LEATHER_LEGGINGS', 'LEATHER_BOOTS'],
+    'armour-iron': ['IRON_HELMET', 'IRON_CHESTPLATE', 'IRON_LEGGINGS', 'IRON_BOOTS'],
+    'armour-diamond': ['DIAMOND_HELMET', 'DIAMOND_CHESTPLATE', 'DIAMOND_LEGGINGS', 'DIAMOND_BOOTS'],
+  },
+
+  affordable(offer) { return Inventory.count(offer.cost[0]) >= offer.cost[1]; },
+
+  buy(offer, game) {
+    if (!this.affordable(offer)) return false;
+    Inventory.take(offer.cost[0], offer.cost[1]);
+    if (typeof offer.give === 'string') {
+      for (const name of this.ARMOUR_SETS[offer.give]) {
+        const id = I[name];
+        Inventory.add(id, 1);
+        Equipment.equip(id);
+      }
+    } else {
+      const [id, n] = offer.give;
+      Inventory.add(id, n);
+      game.hotbarStow(id);
+    }
+    Sound.place();
+    return true;
+  },
+
+  giveLabel(offer) {
+    if (typeof offer.give === 'string') {
+      const first = I[this.ARMOUR_SETS[offer.give][0]];
+      return { icon: first, text: offer.give.split('-')[1].replace(/^./, c => c.toUpperCase()) + ' armour' };
+    }
+    return { icon: offer.give[0], text: thingName(offer.give[0]) + (offer.give[1] > 1 ? ' ×' + offer.give[1] : '') };
+  },
+
+  // ---- scoreboard ------------------------------------------------------
+  refreshBoard() {
+    const el = document.getElementById('arenaboard');
+    if (!el) return;
+    if (!this.active) { el.classList.add('hidden'); return; }
+    el.classList.remove('hidden');
+    const rows = this.teams.map(t => {
+      const state = t.out ? 'out' : t.bedAlive ? 'bed' : t.alive + ' left';
+      return '<div class="bwrow' + (t === this.you ? ' you' : '') + (t.out ? ' gone' : '') + '">' +
+        '<i style="background:' + t.css + '"></i>' +
+        '<span class="bwname">' + t.name + (t === this.you ? ' (you)' : '') + '</span>' +
+        '<span class="bwstate">' + (t.out ? '✖' : t.bedAlive ? '✔ bed' : state) + '</span></div>';
+    }).join('');
+    const clock = this.clock < this.v.prep
+      ? 'Raiders set off in ' + Math.ceil(this.v.prep - this.clock) + 's'
+      : Math.floor(this.clock / 60) + ':' + String(Math.floor(this.clock % 60)).padStart(2, '0');
+    el.innerHTML = '<h4>' + this.v.label + '</h4>' + rows + '<div class="bwclock">' + clock + '</div>';
+  },
+};
+
+// The menu sees two modes; underneath, both are this one game with its dials set
+// differently. Only the frame's single BedWars.update drives it, so these are
+// deliberately thin.
+function bwMode(variant) {
+  return {
+    start(game) { BedWars.start(game, variant); },
+    stop() { BedWars.stop(); },
+    spawnPoint() { return BedWars.spawnPoint(); },
+    ensureArena(world) { BedWars.ensureArena(world); },
+    kit(game) { BedWars.kit(game); },
+    refreshBoard() { BedWars.refreshBoard(); },
+  };
+}
+
+// Four team-coloured players, built on the same boxy humanoid the villagers use.
+function defineBots() {
+  const PARTS = [
+    { id: 'legL', size: [4, 12, 4], pos: [-2, 6, 0], pivot: [0, 6, 0], anim: 'legA', share: 'leg' },
+    { id: 'legR', size: [4, 12, 4], pos: [2, 6, 0], pivot: [0, 6, 0], anim: 'legB', share: 'leg' },
+    { id: 'body', size: [8, 12, 4], pos: [0, 18, 0] },
+    { id: 'armL', size: [4, 12, 4], pos: [-6, 18, 0], pivot: [0, 5, 0], anim: 'legB', share: 'arm' },
+    { id: 'armR', size: [4, 12, 4], pos: [6, 18, 0], pivot: [0, 5, 0], anim: 'legA', share: 'arm' },
+    { id: 'head', size: [8, 8, 8], pos: [0, 28, 0], anim: 'head' },
+  ];
+  const RGB = { red: [212, 70, 62], blue: [72, 116, 220], green: [76, 176, 88], yellow: [226, 190, 60] };
+  defineMob('bw_shop', {
+    label: 'Shopkeeper', width: 0.6, height: 1.95, speed: 0, eyeH: 1.7,
+    hp: 400, bot: true, loot: () => [], spawn: {}, groupMax: 1, call: 'hmm',
+    parts: PARTS.map(p => Object.assign({}, p)),
+    paint(t2, P) {
+      const robe = [86, 132, 108], skin = [206, 168, 140];
+      t2.fill(robe);
+      t2.part(P.body, robe);
+      t2.part(P.legL, [58, 46, 38]);
+      t2.part(P.armL, robe);
+      for (const k of ['nx', 'px', 'nz', 'pz']) {
+        const r = P.armL.rects[k];
+        t2.band(r, r[3] - 3, 3, skin, 4);
+      }
+      t2.part(P.head, skin);
+      t2.face(P.head.rects.py, [64, 48, 36]);
+      const f = P.head.rects.nz;
+      t2.band(f, 0, 2, [64, 48, 36], 4);
+      t2.eyes(f, 2, [46, 52, 96], { y: 3 });
+      t2.rect(f, [168, 130, 104], 4, 2, 6, 4, 1);
+    },
+  });
+  for (const t of BW_TEAMS) {
+    const kit = RGB[t.key];
+    defineMob('bot_' + t.key, {
+      label: t.name + ' player', width: 0.6, height: 1.85, speed: 3.4, eyeH: 1.62,
+      hp: 20, damage: 3, bot: true, team: t.key,
+      loot: () => [], spawn: {}, groupMax: 1, call: 'hmm',
+      parts: PARTS.map(p => Object.assign({}, p)),
+      paint(t2, P) {
+        const skin = [206, 168, 140], dark = kit.map(v => Math.round(v * 0.7));
+        t2.fill(kit);
+        t2.part(P.body, kit);
+        t2.part(P.legL, dark);
+        t2.part(P.armL, kit);
+        for (const k of ['nx', 'px', 'nz', 'pz']) {
+          const r = P.armL.rects[k];
+          t2.band(r, r[3] - 3, 3, skin, 4);                    // bare hands below the sleeve
+        }
+        t2.part(P.head, skin);
+        t2.face(P.head.rects.py, [70, 52, 40]);                // hair
+        const f = P.head.rects.nz;
+        t2.band(f, 0, 2, [70, 52, 40], 4);
+        t2.eyes(f, 2, [46, 52, 96], { y: 3 });
+        t2.rect(f, [168, 130, 104], 4, 2, 6, 4, 1);            // mouth
+      },
+    });
+  }
+}
+</script>
+<script>
+// ===== js/hunger.js =====
+// Hunger Games — one island, chests worth dying for, and no way back.
+// Every tribute starts on a pedestal around the cornucopia. When the countdown
+// ends the others go for the middle, and from then on the ring of safe ground
+// closes in until one of you is left standing.
+
+const HG_Y = 66;              // roughly where the ground sits
+const HG_R = 52;              // how far the island reaches
+const HG_RING = 12;           // the pedestals stand this far out
+const HG_TRIBUTES = 8;        // you and seven others
+const HG_COUNTDOWN = 10;      // seconds on the pedestal before it begins
+const HG_CLOSE_AT = 150;      // seconds of open play before the ring starts closing
+const HG_CLOSE_RATE = 0.9;    // blocks per second it draws in
+const HG_MIN_RING = 12;      // the last stand is the cornucopia and a little air
+
+const HG_NAMES = ['Ash', 'Bram', 'Cato', 'Delly', 'Finch', 'Gale', 'Hazel', 'Juniper',
+                  'Kestrel', 'Lark', 'Marlow', 'Nell', 'Orin', 'Rue', 'Sable', 'Thorn'];
+
+const Hunger = {
+  active: false,
+  phase: 'idle',              // idle | countdown | open | over
+  clock: 0,
+  radius: HG_R,
+  bots: [],
+  chestSpots: [],
+  pedestals: [],
+  you: 0,                     // which pedestal is yours
+  alive: 0,
+
+  // ---- the island ------------------------------------------------------
+  surfaceAt(world, wx, wz) {
+    const d = Math.hypot(wx, wz);
+    if (d > HG_R) return null;
+    const n = world.nStone.nfbm2(wx * 0.021, wz * 0.021, 3);
+    const flat = d < HG_RING + 5 ? 0 : Math.min(1, (d - HG_RING - 5) / 12);   // level ground in the middle
+    return Math.round(HG_Y + n * 3.5 * flat);
+  },
+
+  // Everything the map needs, worked out once so generation and the bots agree.
+  layOut(seed) {
+    const rnd = mulberry32(seed | 0);
+    this.chestSpots = [];
+    for (let i = 0; i < 8; i++) {                      // the cornucopia hoard
+      const a = i / 8 * Math.PI * 2;
+      this.chestSpots.push({ x: Math.round(Math.cos(a) * 4), z: Math.round(Math.sin(a) * 4), tier: 'middle', gone: false });
+    }
+    for (let i = 0; i < 28; i++) {                     // and what is scattered out in the trees
+      const a = rnd() * Math.PI * 2;
+      const r = HG_RING + 6 + rnd() * (HG_R - HG_RING - 14);
+      this.chestSpots.push({ x: Math.round(Math.cos(a) * r), z: Math.round(Math.sin(a) * r), tier: 'outer', gone: false });
+    }
+    this.pedestals = [];
+    for (let i = 0; i < HG_TRIBUTES; i++) {
+      const a = i / HG_TRIBUTES * Math.PI * 2;
+      this.pedestals.push([Math.round(Math.cos(a) * HG_RING), Math.round(Math.sin(a) * HG_RING)]);
+    }
+  },
+
+  nearPedestal(wx, wz) {
+    for (const [px, pz] of this.pedestals) if (Math.abs(px - wx) <= 1 && Math.abs(pz - wz) <= 1) return true;
+    return false;
+  },
+  chestAtSpot(wx, wz) {
+    for (const s of this.chestSpots) if (s.x === wx && s.z === wz) return s;
+    return null;
+  },
+
+  generateChunk(world, cx, cz) {
+    const c = new Chunk(cx, cz);
+    world.chunks.set(world.key(cx, cz), c);
+    const bx = cx * CX, bz = cz * CZ;
+    const blocks = c.blocks;
+    const put = (lx, y, lz, id) => { if (y >= 0 && y < CY) blocks[colOffset(lx, lz) + y * CX * CZ] = id; };
+
+    for (let lz = 0; lz < CZ; lz++) for (let lx = 0; lx < CX; lx++) {
+      const wx = bx + lx, wz = bz + lz;
+      const top = this.surfaceAt(world, wx, wz);
+      if (top === null) continue;
+      const d = Math.hypot(wx, wz);
+      const thick = 6 + 14 * Math.sqrt(Math.max(0, 1 - d / HG_R));    // tapers to nothing at the rim
+      const bottom = Math.round(top - thick);
+      for (let y = bottom; y <= top; y++) {
+        let id = B.STONE;
+        if (y === top) id = B.GRASS;
+        else if (y > top - 4) id = B.DIRT;
+        else if (hash3(wx, y, wz, world.seed + 3) < 0.02) id = B.COAL_ORE;
+        else if (hash3(wx, y, wz, world.seed + 4) < 0.008) id = B.IRON_ORE;
+        put(lx, y, lz, id);
+      }
+      // the cornucopia: a stone floor with a lip around it
+      if (d <= 7) put(lx, top, lz, d > 6 ? B.STONE_BRICKS : B.POLISHED_ANDESITE);
+    }
+
+    // pedestals, one per tribute
+    for (const [px, pz] of this.pedestals) {
+      const lx = px - bx, lz = pz - bz;
+      if (lx < 0 || lz < 0 || lx >= CX || lz >= CZ) continue;
+      const top = this.surfaceAt(world, px, pz);
+      if (top === null) continue;
+      put(lx, top, lz, B.IRON_BLOCK);
+    }
+
+    // chests, standing on the surface
+    for (const spot of this.chestSpots) {
+      const lx = spot.x - bx, lz = spot.z - bz;
+      if (lx < 0 || lz < 0 || lx >= CX || lz >= CZ) continue;
+      const top = this.surfaceAt(world, spot.x, spot.z);
+      if (top === null) continue;
+      put(lx, top + 1, lz, B.CHEST);
+    }
+
+    // a scattering of trees, well clear of the middle
+    for (let lz = -3; lz < CZ + 3; lz++) for (let lx = -3; lx < CX + 3; lx++) {
+      const wx = bx + lx, wz = bz + lz;
+      const d = Math.hypot(wx, wz);
+      if (d < HG_RING + 6 || d > HG_R - 4) continue;
+      if (this.chestAtSpot(wx, wz) || this.nearPedestal(wx, wz)) continue;
+      const r = hash3(wx, 7, wz, world.seed + 99);
+      if (r > 0.035) continue;
+      let best = true;                                  // thin them out so it reads as woodland
+      for (let dz = -2; dz <= 2 && best; dz++) for (let dx = -2; dx <= 2; dx++) {
+        if (!dx && !dz) continue;
+        if (hash3(wx + dx, 7, wz + dz, world.seed + 99) < r) { best = false; break; }
+      }
+      if (!best) continue;
+      const top = this.surfaceAt(world, wx, wz);
+      if (top === null) continue;
+      const roll = hash3(wx, 3, wz, world.seed + 12);
+      world.placeTree(c, wx, top + 1, wz, roll, roll < 0.25 ? 'birch' : roll < 0.4 ? 'spruce' : 'oak');
+    }
+
+    if (world.edits.size) {
+      for (const [k, id] of world.edits) {
+        const p = k.split(',');
+        const x = +p[0], y = +p[1], z = +p[2];
+        if ((x >> 4) === cx && (z >> 4) === cz) blocks[idx(x & 15, y, z & 15)] = id;
+      }
+    }
+    world.rebuildHeightmap(c);
+    c.empty = !blocks.some(v => v !== 0);
+    world.initLight(c);
+    for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+      const nb = world.getChunk(cx + dx, cz + dz);
+      if (nb) nb.dirty = true;
+    }
+    return c;
+  },
+
+  // ---- loot ------------------------------------------------------------
+  LOOT: {
+    middle: [
+      [() => I.IRON_SWORD, 1, 1], [() => I.DIAMOND_SWORD, 1, 1], [() => I.IRON_CHESTPLATE, 1, 1],
+      [() => I.IRON_HELMET, 1, 1], [() => I.IRON_LEGGINGS, 1, 1], [() => I.COOKED_BEEF, 2, 4],
+      [() => I.ENDER_PEARL, 1, 1], [() => I.IRON_PICKAXE, 1, 1], [() => I.IRON_AXE, 1, 1],
+      [() => B.PLANKS, 8, 16], [() => I.GOLD_INGOT, 1, 3],
+    ],
+    outer: [
+      [() => I.WOOD_SWORD, 1, 1], [() => I.STONE_SWORD, 1, 1], [() => I.LEATHER_HELMET, 1, 1],
+      [() => I.LEATHER_CHESTPLATE, 1, 1], [() => I.LEATHER_BOOTS, 1, 1], [() => I.PORKCHOP, 1, 2],
+      [() => I.COOKED_CHICKEN, 1, 2], [() => B.PLANKS, 4, 10], [() => I.STICK, 2, 5],
+      [() => I.FLINT, 1, 2], [() => B.COBBLESTONE, 4, 12], [() => I.WOODEN_AXE, 1, 1],
+      [() => I.STONE_PICKAXE, 1, 1],
+    ],
+  },
+
+  fillChests(world) {
+    for (const spot of this.chestSpots) {
+      const top = this.surfaceAt(world, spot.x, spot.z);
+      if (top === null) continue;
+      const rnd = mulberry32((hash3(spot.x, 5, spot.z, world.seed) * 4294967296) | 0);
+      const table = this.LOOT[spot.tier];
+      const picks = spot.tier === 'middle' ? 3 + Math.floor(rnd() * 3) : 2 + Math.floor(rnd() * 2);
+      const stacks = [];
+      for (let i = 0; i < picks; i++) {
+        const [id, min, max] = table[Math.floor(rnd() * table.length)];
+        stacks.push([id(), min + Math.floor(rnd() * (max - min + 1))]);
+      }
+      spot.y = top + 1;
+      world.chests.set(spot.x + ',' + (top + 1) + ',' + spot.z, stacks);
+    }
+  },
+
+  // ---- the match -------------------------------------------------------
+  start(game) {
+    const world = game.worlds.hunger;
+    this.layOut(world.seed + 77);
+    this.active = true;
+    this.phase = 'countdown';
+    this.clock = 0;
+    this.radius = HG_R;
+    this.bots.length = 0;
+    this.you = Math.floor(Math.random() * HG_TRIBUTES);
+    this.alive = HG_TRIBUTES;
+
+    world.edits.clear();
+    world.chests.clear();
+    for (const c of world.chunks.values()) {
+      if (c.mesh) { game.renderer.freeMesh(c.mesh.solid); game.renderer.freeMesh(c.mesh.fluid); }
+    }
+    world.chunks.clear();
+    this.fillChests(world);
+    this.ensureArena(world);
+
+    const names = HG_NAMES.slice().sort(() => Math.random() - 0.5);
+    for (let i = 0; i < HG_TRIBUTES; i++) {
+      if (i === this.you) continue;
+      const [px, pz] = this.pedestals[i];
+      const top = this.surfaceAt(world, px, pz);
+      const mob = new Mob('tribute_' + (i % 6), px + 0.5, top + 1, pz + 0.5, 0);
+      mob.hgName = names[i % names.length];
+      mob.hgGear = 0;
+      mob.hgAggro = 6 + Math.random() * 9;              // how readily it picks a fight
+      mob.hgSpeed = mob.def.speed * (0.85 + Math.random() * 0.4);
+      mob.hgGreed = Math.random();                      // how much it wants the cornucopia
+      mob.hgWander = null;
+      mob.attackCd = 0;
+      mob.yaw = Math.atan2(-px, pz);                    // facing the middle, as you do
+      this.bots.push(mob);
+      Animals.list.push(mob);
+    }
+    this.announce('The tributes take their places…');
+  },
+
+  // You arrive with nothing. Everything you fight with comes out of a chest.
+  kit(game) {
+    Inventory.counts.clear();
+    Equipment.load({ head: 0, chest: 0, legs: 0, feet: 0 });
+    game.hotbar = [0, 0, 0, 0, 0, 0, 0, 0, 0];
+    game.slot = 0;
+  },
+
+  ordinal(n) {
+    const s = ['th', 'st', 'nd', 'rd'], v = n % 100;
+    return n + (s[(v - 20) % 10] || s[v] || s[0]);
+  },
+
+  stop() {
+    this.active = false;
+    this.phase = 'idle';
+    this.bots.length = 0;
+    document.getElementById('arenaboard').classList.add('hidden');
+    document.getElementById('arenaend').classList.add('hidden');
+  },
+
+  spawnPoint(world) {
+    const [px, pz] = this.pedestals[this.you];
+    return [px + 0.5, this.surfaceAt(world, px, pz) + 1, pz + 0.5];
+  },
+
+  ensureArena(world) {
+    const n = Math.ceil(HG_R / CX) + 1;
+    for (let cx = -n; cx <= n; cx++) for (let cz = -n; cz <= n; cz++) {
+      if (!world.getChunk(cx, cz)) world.generateChunk(cx, cz);
+    }
+  },
+
+  announce(text) {
+    Game.toast(text);
+    const el = document.getElementById('arenanews');
+    if (!el) return;
+    el.textContent = text;
+    el.classList.remove('hidden');
+    clearTimeout(this._newsTimer);
+    this._newsTimer = setTimeout(() => el.classList.add('hidden'), 4000);
+  },
+
+  // ---- per-frame -------------------------------------------------------
+  update(dt, game) {
+    if (!this.active || this.phase === 'over') return;
+    const p = game.player;
+    this.clock += dt;
+
+    if (this.phase === 'countdown') {
+      const spot = this.spawnPoint(game.world);
+      p.pos[0] = spot[0]; p.pos[2] = spot[2];            // held on the pedestal
+      p.vel[0] = p.vel[2] = 0;
+      if (this.clock >= HG_COUNTDOWN) {
+        this.phase = 'open';
+        this.clock = 0;
+        this.announce('Go!');
+        Sound.burst({ dur: 0.5, freq: 900, gain: 0.5, sweep: 0.4 });
+      } else {
+        const left = Math.ceil(HG_COUNTDOWN - this.clock);
+        if (left !== this._lastCount) { this._lastCount = left; Sound.burst({ dur: 0.1, freq: 700, gain: 0.3, sweep: 1 }); }
+      }
+      this.refreshBoard();
+      return;
+    }
+
+    // the ring closes in, and standing outside it costs you
+    if (this.clock > HG_CLOSE_AT) {
+      this.radius = Math.max(HG_MIN_RING, this.radius - HG_CLOSE_RATE * dt);
+      if (!this._closing) { this._closing = true; this.announce('The ring is closing — get to the middle'); }
+    }
+    const pd = Math.hypot(p.pos[0], p.pos[2]);
+    if (pd > this.radius) {
+      this.burn = (this.burn || 0) + dt;
+      if (this.burn > 1) {
+        this.burn = 0;
+        p.invuln = 0;
+        p.damage(3, 'the closing ring');
+        Game.toast('Outside the ring — get to the middle');
+      }
+    } else this.burn = 0;
+
+    if (p.pos[1] < HG_Y - 40) { p.invuln = 0; p.damage(40, 'the fall'); }
+
+    // anyone who died, however they died, is out for good
+    for (let i = this.bots.length - 1; i >= 0; i--) {
+      if (this.bots[i].dead) this.tributeDied(this.bots[i], 'the arena');
+    }
+
+    this.sweepTimer = (this.sweepTimer || 0) - dt;
+    if (this.sweepTimer <= 0) {
+      this.sweepTimer = 1;
+      for (const spot of this.chestSpots) {
+        if (spot.gone || spot.y === undefined) continue;
+        if (game.world.getBlock(spot.x, spot.y, spot.z) !== B.CHEST) spot.gone = true;
+      }
+    }
+    this.boardTimer = (this.boardTimer || 0) - dt;
+    if (this.boardTimer <= 0) { this.boardTimer = 0.4; this.refreshBoard(); }
+    this.arenaTimer = (this.arenaTimer || 0) - dt;
+    if (this.arenaTimer <= 0) { this.arenaTimer = 1; this.ensureArena(game.world); }
+  },
+
+  tributeDied(mob, by) {
+    if (mob.hgGone) return;
+    mob.hgGone = true;
+    mob.dead = true;
+    const i = this.bots.indexOf(mob);
+    if (i >= 0) this.bots.splice(i, 1);
+    this.alive = Math.max(0, this.alive - 1);
+    this.announce(mob.hgName + ' was killed by ' + by + ' — ' + this.alive + ' left');
+    this.refreshBoard();
+    if (this.bots.length === 0) this.finish('You are the last one standing', true);
+  },
+
+  playerDied(game) {
+    this.alive = Math.max(0, this.alive - 1);
+    this.refreshBoard();
+    this.finish('You placed ' + this.ordinal(this.bots.length + 1) + ' of ' + HG_TRIBUTES, false);
+    return true;
+  },
+
+  finish(text, won) {
+    if (this.phase === 'over') return;
+    this.phase = 'over';
+    document.getElementById('arenaend-title').textContent = won ? 'Victory' : 'You died';
+    document.getElementById('arenaend-sub').textContent = text;
+    document.getElementById('arenaend').classList.remove('hidden');
+    document.exitPointerLock();
+    Game.paused = true;
+    Sound.burst({ dur: 0.9, freq: won ? 620 : 200, gain: 0.5, sweep: won ? 0.4 : 3 });
+  },
+
+  // ---- the other tributes ----------------------------------------------
+  // They break for the middle, loot what they can carry, and go looking for
+  // whoever is nearest once they feel armed enough.
+  nearestFoe(mob, player) {
+    let foe = null;
+    if (!player.dead) {
+      const pd = Math.hypot(player.pos[0] - mob.x, player.pos[2] - mob.z);
+      if (Math.abs(player.pos[1] - mob.y) < 5) foe = { d: pd, x: player.pos[0], z: player.pos[2], isPlayer: true };
+    }
+    for (const other of this.bots) {
+      if (other === mob || other.dead) continue;
+      if (Math.abs(other.y - mob.y) > 5) continue;
+      const od = Math.hypot(other.x - mob.x, other.z - mob.z);
+      if (!foe || od < foe.d) foe = { d: od, x: other.x, z: other.z, mob: other };
+    }
+    return foe;
+  },
+
+  // Arm yourself, then go looking for trouble — nobody picks a fight over a
+  // cornucopia chest until they have something to fight with.
+  botGoal(mob, player) {
+    const d = Math.hypot(mob.x, mob.z);
+    if (d > this.radius - 1) return { kind: 'move', at: [0, 0] };       // the ring drives everyone in
+
+    const foe = this.nearestFoe(mob, player);
+    if (mob.hp < 9 && foe && foe.d < 14) {                // badly hurt: get out of it
+      const ax = mob.x - foe.x, az = mob.z - foe.z, l = Math.hypot(ax, az) || 1;
+      return { kind: 'flee', at: [mob.x + ax / l * 14, mob.z + az / l * 14] };
+    }
+    if (foe && foe.d < 2.8) return { kind: 'foe', at: [foe.x, foe.z], foe };   // cornered: swing back
+
+    const chest = this.nearestChest(mob);
+    if (chest && mob.hgGear < 2) return { kind: 'chest', at: [chest.x, chest.z], chest };
+
+    const bold = mob.hgAggro + mob.hgGear * 3;
+    if (foe && foe.d < bold) return { kind: 'foe', at: [foe.x, foe.z], foe };
+    if (chest && mob.hgGear < 4) return { kind: 'chest', at: [chest.x, chest.z], chest };
+    if (foe) return { kind: 'foe', at: [foe.x, foe.z], foe };
+
+    if (!mob.hgWander || Math.hypot(mob.hgWander[0] - mob.x, mob.hgWander[1] - mob.z) < 3) {
+      const a = Math.random() * Math.PI * 2, r = Math.random() * Math.max(6, this.radius - 6);
+      mob.hgWander = [Math.cos(a) * r, Math.sin(a) * r];
+    }
+    return { kind: 'move', at: mob.hgWander };
+  },
+
+  nearestChest(mob) {
+    let best = null, bd = 1e9;
+    const shy = this.clock < 25 && mob.hgGreed < 0.5;      // not everyone fancies the bloodbath
+    for (const s of this.chestSpots) {
+      if (s.gone) continue;
+      if (shy && s.tier === 'middle') continue;
+      if (Math.hypot(s.x, s.z) > this.radius - 2) continue;
+      const d = Math.hypot(s.x - mob.x, s.z - mob.z);
+      const want = s.tier === 'middle' ? d * (1.2 - mob.hgGreed) : d;      // some of them fancy the middle
+      if (want < bd) { bd = want; best = s; }
+    }
+    return best;
+  },
+
+  botUpdate(mob, dt, world, player) {
+    if (!this.active || this.phase === 'over') { mob.walking = false; return; }
+    mob.attackCd = Math.max(0, (mob.attackCd || 0) - dt);
+
+    if (this.phase === 'countdown') {                    // still on the pedestal
+      mob.walking = false; mob.vx = mob.vz = 0;
+      mob.vy -= GRAVITY_MOB * dt;
+      mob.moveAxis(world, 1, mob.vy * dt);
+      const l0 = world.getLight(Math.floor(mob.x), Math.floor(mob.y + 1), Math.floor(mob.z));
+      mob.sky = (l0 >> 4) / 15; mob.blk = (l0 & 15) / 15;
+      return;
+    }
+
+    const goal = this.botGoal(mob, player);
+    const dx = goal.at[0] - mob.x, dz = goal.at[1] - mob.z;
+    const dist = Math.hypot(dx, dz);
+    mob.targetYaw = Math.atan2(dx, -dz);
+    let turn = mob.targetYaw - mob.yaw;
+    while (turn > Math.PI) turn -= Math.PI * 2;
+    while (turn < -Math.PI) turn += Math.PI * 2;
+    mob.yaw += clamp(turn, -5 * dt, 5 * dt);
+    mob.walking = dist > 1.2;
+
+    const speed = (mob.hgSpeed || mob.def.speed) * (mob.walking ? 1 : 0);
+    const fx = Math.sin(mob.yaw) * speed, fz = -Math.cos(mob.yaw) * speed;
+    const blend = 1 - Math.exp(-(mob.onGround ? 12 : 3) * dt);
+    mob.vx += (fx - mob.vx) * blend;
+    mob.vz += (fz - mob.vz) * blend;
+    mob.vy -= GRAVITY_MOB * dt;
+    if (mob.vy < -45) mob.vy = -45;
+    mob.onGround = false;
+    const steps = Math.max(1, Math.ceil(Math.hypot(mob.vx, mob.vy, mob.vz) * dt / 0.25));
+    let blocked = false;
+    for (let i = 0; i < steps; i++) {
+      mob.moveAxis(world, 1, mob.vy * dt / steps);
+      blocked = mob.moveAxis(world, 0, mob.vx * dt / steps) || blocked;
+      blocked = mob.moveAxis(world, 2, mob.vz * dt / steps) || blocked;
+    }
+    if (blocked && mob.onGround) {
+      const head = world.getBlock(Math.floor(mob.x), Math.floor(mob.y + mob.def.height + 0.6), Math.floor(mob.z));
+      if (!isSolid(head)) mob.vy = 7.6;
+    }
+    if (mob.y < HG_Y - 40) { this.tributeDied(mob, 'the fall'); return; }
+
+    // out in the open ground beyond the ring, they burn like you do
+    if (Math.hypot(mob.x, mob.z) > this.radius) {
+      mob.hgBurn = (mob.hgBurn || 0) + dt;
+      if (mob.hgBurn > 1) {
+        mob.hgBurn = 0; mob.hp -= 3; mob.hurt = 0.3;
+        if (mob.hp <= 0) { this.tributeDied(mob, 'the closing ring'); return; }
+      }
+    } else mob.hgBurn = 0;
+
+    if (mob.hp < (mob.hgLastHp === undefined ? mob.hp : mob.hgLastHp)) mob.hgHurtAt = this.clock;
+    mob.hgLastHp = mob.hp;
+    if (mob.hp < 20 && this.clock - (mob.hgHurtAt || -99) > 6) {
+      mob.hgRegen = (mob.hgRegen || 0) + dt;
+      if (mob.hgRegen > 2) { mob.hgRegen = 0; mob.hp = Math.min(20, mob.hp + 1); }
+    }
+
+    const underfoot = this.nearestChest(mob);
+    if (underfoot && Math.hypot(underfoot.x - mob.x, underfoot.z - mob.z) < 1.9) this.loot(mob, underfoot, world);
+    else if (goal.kind === 'chest' && dist < 1.9) this.loot(mob, goal.chest, world);
+    if (goal.kind === 'foe' && dist < 2.3 && mob.attackCd <= 0) {
+      mob.attackCd = 0.7 + Math.random() * 0.6;
+      mob.swing = 1;
+      this.strike(mob, goal.foe, player);
+    }
+
+    const hspeed = Math.hypot(mob.vx, mob.vz);
+    mob.walkPhase += dt * hspeed * 5.5;
+    mob.swing = Math.min(1, hspeed / (mob.hgSpeed || mob.def.speed));
+    mob.airborne = !mob.onGround;
+    if (mob.hurt > 0) mob.hurt -= dt;
+    const l = world.getLight(Math.floor(mob.x), Math.floor(mob.y + 1), Math.floor(mob.z));
+    mob.sky = (l >> 4) / 15; mob.blk = (l & 15) / 15;
+  },
+
+  loot(mob, spot, world) {
+    if (spot.gone) return;
+    spot.gone = true;
+    mob.hgGear = Math.min(5, mob.hgGear + (spot.tier === 'middle' ? 2 : 1));
+    if (spot.y !== undefined) {
+      world.setBlock(spot.x, spot.y, spot.z, 0);
+      world.chests.delete(spot.x + ',' + spot.y + ',' + spot.z);
+    }
+    Sound.burst({ dur: 0.18, freq: 620, gain: 0.2, sweep: 0.5 });
+  },
+
+  strike(mob, foe, player) {
+    const dmg = 2 + mob.hgGear;
+    Sound.burst({ dur: 0.09, freq: 460, gain: 0.28, sweep: 0.5 });
+    if (foe.isPlayer) {
+      if (player.damage(dmg, mob.hgName)) {
+        const dx = player.pos[0] - mob.x, dz = player.pos[2] - mob.z;
+        const push = 3.2 / Math.max(0.7, Math.hypot(dx, dz));
+        player.vel[0] += dx * push; player.vel[2] += dz * push; player.vel[1] = 3.2;
+      }
+    } else if (foe.mob) {
+      const other = foe.mob;
+      other.hp -= dmg;
+      other.hurt = 0.3;
+      const dx = other.x - mob.x, dz = other.z - mob.z;
+      const push = 4 / Math.max(0.7, Math.hypot(dx, dz));
+      other.vx += dx * push; other.vz += dz * push; other.vy = 3;
+      if (other.hp <= 0) this.tributeDied(other, mob.hgName);
+    }
+  },
+
+  // ---- scoreboard ------------------------------------------------------
+  refreshBoard() {
+    const el = document.getElementById('arenaboard');
+    if (!el) return;
+    if (!this.active) { el.classList.add('hidden'); return; }
+    el.classList.remove('hidden');
+    let head, rows;
+    if (this.phase === 'countdown') {
+      head = 'Starting in ' + Math.ceil(HG_COUNTDOWN - this.clock) + 's';
+      rows = '<div class="bwrow"><span class="bwname">Stay on your pedestal</span></div>';
+    } else {
+      head = Math.floor(this.clock / 60) + ':' + String(Math.floor(this.clock % 60)).padStart(2, '0');
+      rows = '<div class="bwrow you"><span class="bwname">Tributes left</span><span class="bwstate">' + this.alive + ' / ' + HG_TRIBUTES + '</span></div>' +
+             '<div class="bwrow"><span class="bwname">Ring</span><span class="bwstate">' + Math.round(this.radius) + ' blocks</span></div>' +
+             '<div class="bwrow"><span class="bwname">Chests left</span><span class="bwstate">' + this.chestSpots.filter(s => !s.gone).length + '</span></div>';
+    }
+    el.innerHTML = '<h4>Hunger Games</h4>' + rows + '<div class="bwclock">' + head + '</div>';
+  },
+};
+
+// Seven other tributes, each in their own colours.
+function defineTributes() {
+  const PARTS = [
+    { id: 'legL', size: [4, 12, 4], pos: [-2, 6, 0], pivot: [0, 6, 0], anim: 'legA', share: 'leg' },
+    { id: 'legR', size: [4, 12, 4], pos: [2, 6, 0], pivot: [0, 6, 0], anim: 'legB', share: 'leg' },
+    { id: 'body', size: [8, 12, 4], pos: [0, 18, 0] },
+    { id: 'armL', size: [4, 12, 4], pos: [-6, 18, 0], pivot: [0, 5, 0], anim: 'legB', share: 'arm' },
+    { id: 'armR', size: [4, 12, 4], pos: [6, 18, 0], pivot: [0, 5, 0], anim: 'legA', share: 'arm' },
+    { id: 'head', size: [8, 8, 8], pos: [0, 28, 0], anim: 'head' },
+  ];
+  const KITS = [
+    [[168, 84, 62], [92, 70, 58]], [[86, 122, 168], [58, 62, 84]], [[110, 150, 92], [64, 78, 56]],
+    [[172, 154, 96], [96, 84, 58]], [[142, 96, 158], [78, 60, 88]], [[186, 186, 190], [96, 96, 102]],
+  ];
+  KITS.forEach(([shirt, trousers], i) => {
+    defineMob('tribute_' + i, {
+      label: 'Tribute', width: 0.6, height: 1.85, speed: 3.6, eyeH: 1.62,
+      hp: 20, damage: 3, bot: true, arena: 'hunger',
+      loot: () => [], spawn: {}, groupMax: 1, call: 'hmm',
+      parts: PARTS.map(p => Object.assign({}, p)),
+      paint(t, P) {
+        const skin = [206, 168, 140], hair = [70, 52, 40];
+        t.fill(shirt);
+        t.part(P.body, shirt);
+        t.part(P.legL, trousers);
+        t.part(P.armL, shirt);
+        for (const k of ['nx', 'px', 'nz', 'pz']) {
+          const r = P.armL.rects[k];
+          t.band(r, r[3] - 3, 3, skin, 4);
+        }
+        t.part(P.head, skin);
+        t.face(P.head.rects.py, hair);
+        const f = P.head.rects.nz;
+        t.band(f, 0, 2, hair, 4);
+        t.eyes(f, 2, [46, 52, 96], { y: 3 });
+        t.rect(f, [168, 130, 104], 4, 2, 6, 4, 1);
+      },
+    });
+  });
+}
 </script>
 <script>
 // ===== js/renderer.js =====
@@ -5411,6 +6973,18 @@ class Renderer {
       gl.useProgram(this.chunkProg);
     }
 
+    // --- the outline of the block a click would place, drawn bright so it reads
+    // against the sky when you are out over a drop
+    if (scene.ghost) {
+      gl.useProgram(this.lineProg);
+      gl.uniformMatrix4fv(this.uLine.uViewProj, false, this.viewProj);
+      gl.uniform3fv(this.uLine.uOffset, scene.ghost);
+      gl.uniform4f(this.uLine.uColor, 0.95, 0.99, 1.0, 0.9);
+      gl.bindVertexArray(this.lineVAO);
+      gl.drawArrays(gl.LINES, 0, 24);
+      gl.useProgram(this.chunkProg);
+    }
+
     // --- water and other translucent faces, back to front
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
@@ -5468,6 +7042,7 @@ class Player {
     this.maxHp = 20; this.hp = 20;
     this.air = 15; this.maxAir = 15;         // seconds of breath
     this.fallFrom = null;
+    this.groundY = null;          // level of the block last stood on, for bridging
     this.hurtFlash = 0; this.invuln = 0; this.sinceHurt = 99;
     this.dead = false;
     this.invulnerable = false;    // creative mode sets this
@@ -5585,6 +7160,10 @@ class Player {
       if (this.vel[1] < -TERMINAL) this.vel[1] = -TERMINAL;
     }
 
+    // Sneaking holds you on the block you are standing on rather than letting you
+    // walk off it. It is what makes bridging out over a drop possible: you edge
+    // out, look back down at the block face, and lay the next one.
+    const edgeGuard = input.sneak && !this.flying && this.onGround && this.vel[1] <= 0;
     this.onGround = false;
     // sub-step so fast movement cannot tunnel through blocks
     const dist = Math.hypot(this.vel[0], this.vel[1], this.vel[2]) * dt;
@@ -5592,14 +7171,20 @@ class Player {
     const sdt = dt / steps;
     for (let i = 0; i < steps; i++) {
       this.moveAxis(1, this.vel[1] * sdt);
+      const backX = this.pos[0];
       this.moveAxis(0, this.vel[0] * sdt);
+      if (edgeGuard && !this.overSolidGround()) { this.pos[0] = backX; this.vel[0] = 0; }
+      const backZ = this.pos[2];
       this.moveAxis(2, this.vel[2] * sdt);
+      if (edgeGuard && !this.overSolidGround()) { this.pos[2] = backZ; this.vel[2] = 0; }
     }
     if (this.pos[1] < -4 && w.dimension === 'end') {
       this.invuln = 0;
       this.damage(20, 'the void');
       this.pos[1] = 90; this.vel[1] = 0; this.fallFrom = null;
     } else if (this.pos[1] < -20) { this.pos[1] = CY - 8; this.vel[1] = 0; this.fallFrom = null; }
+
+    if (this.onGround) this.groundY = Math.floor(this.pos[1] - 0.02);
 
     const hspeed = Math.hypot(this.vel[0], this.vel[2]);
     if (this.onGround && hspeed > 0.5) this.walkPhase += dt * hspeed * 1.9;
@@ -5687,6 +7272,15 @@ class Player {
       }
     }
     return null;
+  }
+
+  // Is anything solid directly under the player's feet?
+  overSolidGround() {
+    const y = Math.floor(this.pos[1] - 0.02);
+    for (let zz = Math.floor(this.pos[2] - P_HALF); zz <= Math.floor(this.pos[2] + P_HALF); zz++)
+      for (let xx = Math.floor(this.pos[0] - P_HALF); xx <= Math.floor(this.pos[0] + P_HALF); xx++)
+        if (isSolid(this.world.getBlock(xx, y, zz))) return true;
+    return false;
   }
 
   // Would placing a block here trap the player inside it?
@@ -5815,6 +7409,10 @@ const Settings = {
     if (key === 'volume' && Sound.master) Sound.master.gain.value = value / 100;
   },
 };
+// The modes that take you out of your world and into an arena of their own.
+let ARENA_MODES = {};
+function defineArenas() { ARENA_MODES = { bedwars: bwMode('classic'), rush: bwMode('rush'), hunger: Hunger }; }
+
 const VIEW_DIST = 8;              // chunks in each direction
 const DAY_LENGTH = 600;           // seconds for a full day/night cycle
 
@@ -5853,7 +7451,10 @@ const Game = {
     buildBlocks();
     defineItems();
     defineAnimals();
+    defineBots();
+    defineTributes();
     buildMobSkins();
+    defineArenas();
     defineRecipes();
     defineTrades();
     defineSmelting();
@@ -5883,6 +7484,9 @@ const Game = {
       overworld: new World(seed),
       nether: new World((seed ^ 0x5eed5eed) | 0, 'nether'),
       end: new World((seed ^ 0x3e4d11) | 0, 'end'),
+      bedwars: new World(1, 'bedwars'),
+      rush: new World(2, 'rush'),
+      hunger: new World((seed ^ 0x11a6e2) | 0, 'hunger'),
     };
     if (save) for (const [k, v] of save.edits) this.worlds.overworld.edits.set(k, v);
     if (save && save.netherEdits) for (const [k, v] of save.netherEdits) this.worlds.nether.edits.set(k, v);
@@ -5912,7 +7516,7 @@ const Game = {
       if (save.chests) this.worlds.overworld.chests = new Map(save.chests);
       if (save.hp) this.player.hp = save.hp;
       if (save.slot != null) this.slot = save.slot;
-      if (save.mode) this.mode = save.mode;
+      if (save.mode) this.mode = ARENA_MODES[save.mode] ? 'creative' : save.mode;
     } else {
       let y = CY - 1;
       while (y > 0 && !isSolid(this.world.getBlock(sx, y, sz))) y--;
@@ -6020,7 +7624,8 @@ const Game = {
         const n = +e.code.slice(5);
         if (n >= 1 && n <= 9) this.selectSlot(n - 1);
       } else if (e.code === 'KeyE') {
-        if (this.chestAt) this.closeChest();
+        if (this.shopOpen) this.closeShop();
+        else if (this.chestAt) this.closeChest();
         else if (this.trading) this.closeTrading();
         else if (this.furnaceOpen) this.closeFurnace();
         else this.toggleInventory();
@@ -6030,7 +7635,8 @@ const Game = {
       else if (e.code === 'KeyT') { this.timeFlow = !this.timeFlow; this.toast(this.timeFlow ? 'Time flowing' : 'Time frozen'); }
       else if (e.code === 'KeyN') { this.time = (this.time + 0.5) % 1; this.toast('Time skipped'); }
       else if (e.code === 'Escape') {
-        if (this.chestAt) this.closeChest();
+        if (this.shopOpen) this.closeShop();
+        else if (this.chestAt) this.closeChest();
         else if (this.furnaceOpen) this.closeFurnace();
         else if (this.trading) this.closeTrading();
         else if (this.inventoryOpen) this.closeCrafting();
@@ -6112,6 +7718,16 @@ const Game = {
       location.reload();
     });
     document.getElementById('savebtn').addEventListener('click', () => this.save());
+    document.getElementById('arenaend-again').addEventListener('click', () => {
+      document.getElementById('arenaend').classList.add('hidden');
+      this.enterMatch(this.mode);
+      const p = this.canvas.requestPointerLock();
+      if (p && p.catch) p.catch(() => { this.paused = false; });
+    });
+    document.getElementById('arenaend-leave').addEventListener('click', () => {
+      document.getElementById('arenaend').classList.add('hidden');
+      this.setMode('creative');
+    });
   },
 
   // Pointer lock is unavailable in some embeds; play with click-drag instead.
@@ -6133,7 +7749,9 @@ const Game = {
   // Creative: fly, build from thin air, take no damage.
   // Survival: your hands, your stock, your health.
   setMode(mode, quiet) {
-    this.mode = mode === 'survival' ? 'survival' : 'creative';
+    const was = this.mode;
+    this.mode = ARENA_MODES[mode] || mode === 'survival' ? mode : 'creative';
+    if (ARENA_MODES[was] && this.mode !== was) this.leaveMatch();
     const creative = this.mode === 'creative';
     this.player.invulnerable = creative;
     if (!creative && this.player.flying) this.player.flying = false;
@@ -6144,7 +7762,134 @@ const Game = {
     }
     this._hudHp = null;
     this.updateHotbarUI();
+    if (ARENA_MODES[this.mode] && was !== this.mode) { this.enterMatch(this.mode); return; }
     if (!quiet) this.toast(creative ? 'Creative mode' : 'Survival mode');
+  },
+
+  // Blocks are spent everywhere except creative.
+  survivalRules() { return this.mode !== 'creative'; },
+
+  // ---- Bed Wars --------------------------------------------------------
+  // Starting a match parks the overworld where it stands and drops you into the
+  // arena; leaving puts you back exactly where you were.
+  enterMatch(kind) {
+    kind = kind || this.mode;
+    const arena = ARENA_MODES[kind];
+    if (!arena) return;
+    if (!ARENA_MODES[this.dimension]) {
+      // A match is a place you visit: what you were carrying waits for you at home.
+      this.homePos = {
+        dimension: this.dimension, pos: this.player.pos.slice(),
+        yaw: this.player.yaw, pitch: this.player.pitch,
+        inventory: Inventory.serialize(), equipment: Equipment.serialize(),
+        hotbar: this.hotbar.slice(), slot: this.slot,
+      };
+    }
+    this.dimension = kind;
+    const world = this.worlds[kind];
+    this.world = world;
+    this.player.world = world;
+    Animals.reset();
+    Drops.reset();
+    Thrown.reset();
+    arena.start(this);
+    const spot = arena.spawnPoint(world);
+    this.player.spawn = spot.slice();
+    this.player.pos = spot.slice();
+    this.player.vel = [0, 0, 0];
+    this.player.flying = false;
+    this.player.fallFrom = null;
+    this.player.hp = this.player.maxHp;
+    this.player.dead = false;
+    this.dying = false;
+    this.lastChunk = null;
+    this.mining = null;
+    Animals.cap = 0; Animals.hostileCap = 0;        // no wildlife in an arena
+    arena.ensureArena(world);
+    if (arena.kit) arena.kit(this);
+    arena.refreshBoard();
+    this.time = 0.3;
+    this.timeFlow = false;
+    document.getElementById('died').classList.add('hidden');
+    document.getElementById('arenaend').classList.add('hidden');
+    this.updateHotbarUI();
+    this.renderer.buildHandMesh(this.hotbar[this.slot]);
+  },
+
+  leaveMatch() {
+    for (const k in ARENA_MODES) ARENA_MODES[k].stop();
+    Animals.cap = 26; Animals.hostileCap = 12;
+    Animals.reset();
+    Drops.reset();
+    Thrown.reset();
+    this.timeFlow = true;
+    const home = this.homePos;
+    this.dimension = (home && home.dimension) || 'overworld';
+    if (ARENA_MODES[this.dimension]) this.dimension = 'overworld';
+    this.world = this.worlds[this.dimension];
+    this.player.world = this.world;
+    if (home) {
+      this.player.pos = home.pos.slice();
+      this.player.yaw = home.yaw; this.player.pitch = home.pitch;
+      Inventory.load(home.inventory || []);
+      Equipment.load(home.equipment || { head: 0, chest: 0, legs: 0, feet: 0 });
+      if (home.hotbar) this.hotbar = home.hotbar.slice();
+      if (home.slot != null) this.slot = home.slot;
+    }
+    this.player.vel = [0, 0, 0];
+    this.player.fallFrom = null;
+    this.player.spawn = this.player.pos.slice();
+    this.player.hp = this.player.maxHp;
+    this.player.dead = false;
+    this.dying = false;
+    this.lastChunk = null;
+    this._hudArmour = null;
+    this.updateHotbarUI();
+    this.renderer.buildHandMesh(this.hotbar[this.slot]);
+  },
+
+  openShop() {
+    this.shopOpen = true;
+    document.getElementById('shop').classList.add('open');
+    document.exitPointerLock();
+    if (this.dragLook) this.paused = true;
+    this.refreshShop();
+    Sound.animal('hmm', 1);
+  },
+  closeShop() {
+    this.shopOpen = false;
+    document.getElementById('shop').classList.remove('open');
+    if (this.dragLook) { this.paused = false; return; }
+    const p = this.canvas.requestPointerLock();
+    if (p && p.catch) p.catch(() => {});
+  },
+  refreshShop() {
+    if (!this.shopOpen) return;
+    const purse = [I.IRON_INGOT, I.GOLD_INGOT, I.DIAMOND, I.EMERALD]
+      .map(id => '<img src="' + thingIcon(id) + '" alt=""> ' + Inventory.count(id)).join(' &nbsp; ');
+    document.getElementById('shop-purse').innerHTML = purse;
+    const list = document.getElementById('shop-list');
+    list.innerHTML = '';
+    for (const offer of BedWars.offers()) {
+      const gives = BedWars.giveLabel(offer);
+      const b = document.createElement('button');
+      b.className = 'deal';
+      b.innerHTML =
+        '<span class="side"><img src="' + thingIcon(offer.cost[0]) + '" alt="">' +
+          '<span class="qty">' + offer.cost[1] + ' ' + thingName(offer.cost[0]) + '</span></span>' +
+        '<span class="to">&rarr;</span>' +
+        '<span class="side"><img src="' + thingIcon(gives.icon) + '" alt="">' +
+          '<span class="qty">' + gives.text + '</span></span>' +
+        '<span class="left">' + offer.note + '</span>';
+      b.disabled = !BedWars.affordable(offer);
+      b.addEventListener('click', () => {
+        if (!BedWars.buy(offer, this)) return;
+        this.toast('Bought ' + gives.text);
+        this.hotbarCheck();
+        this.refreshShop();
+      });
+      list.appendChild(b);
+    }
   },
 
   selectSlot(i) {
@@ -6162,6 +7907,7 @@ const Game = {
       const weapon = heldWeapon(this.hotbar[this.slot]);
       const res = Animals.punch(mob, this.player.dir, weapon ? weapon.damage : 1, this.world);
       Sound.burst({ dur: 0.09, freq: weapon ? 520 : 380, gain: 0.35, sweep: 0.5 });
+      if (res.killed && mob.def.bot) BedWars.botDied(mob, 'you');
       if (res.killed && mob.def.boss) this.dragonSlain(mob);
       if (res.killed && res.drops && res.drops.length) {
         this.toast('Collected ' + res.drops.map(d => thingName(d[0]) + (d[1] > 1 ? ' \u00d7' + d[1] : '')).join(', '));
@@ -6206,6 +7952,19 @@ const Game = {
     }
     if (!hit) return;
     if (hit.id === B.BEDROCK) { this.toast('Bedrock cannot be broken'); return; }
+    if (BedWars.active) {
+      const bed = BedWars.bedAt(hit.x, hit.y, hit.z);
+      if (bed) {
+        if (bed === BedWars.you) { this.toast('That is your own bed'); return; }
+        BedWars.breakBed(bed, 'you');
+        return;
+      }
+      if (!BedWars.canBreak(hit.x, hit.y, hit.z, hit.id)) {
+        this.toast('Only blocks placed during the match can be broken');
+        return;
+      }
+      BedWars.placed.delete(BedWars.key(hit.x, hit.y, hit.z));
+    }
     Sound.dig(hit.id);
     this.world.setBlock(hit.x, hit.y, hit.z, 0);
 
@@ -6240,6 +7999,7 @@ const Game = {
     if (!fromRepeat) {
       // an animal in the way comes first
       const mob = Animals.pick(this.player.eye, this.player.dir, hit ? hit.dist : this.player.reach);
+      if (mob && mob.bwShop) { this.openShop(); return; }
       if (mob && mob.def.villager) { this.openTrading(mob); return; }
 
       // then whatever you are pointing at, whatever you happen to be holding
@@ -6255,7 +8015,9 @@ const Game = {
 
     const held = this.hotbar[this.slot];
     if (isItem(held)) { if (!fromRepeat) this.useItem(held); return; }
-    if (!hit) return;
+    if (held && this.bridging()) { this.bridgeAssist(held); return; }
+    // Aiming out into open air: lay the next plank of a bridge instead of nothing.
+    if (!hit) { if (held) this.bridgeAssist(held); return; }
     const [x, y, z] = hit.place;
     if (y < 0 || y >= CY) return;
     const existing = this.world.getBlock(x, y, z);
@@ -6263,27 +8025,77 @@ const Game = {
     const id = this.hotbar[this.slot];
     if (!id) return;
     if (isSolid(id) && this.player.intersectsBlock(x, y, z)) return;
-    if (this.mode === 'survival' && Inventory.count(id) <= 0) {
+    if (this.survivalRules() && Inventory.count(id) <= 0) {
       this.toast('You have no ' + thingName(id) + ' left');
       return;
     }
     if (id === B.DOOR_LOWER) {
       if (this.world.getBlock(x, y + 1, z) !== 0) { this.toast('No headroom for a door'); return; }
-      if (this.mode === 'survival' && Inventory.count(id) <= 0) { this.toast('You have no doors left'); return; }
+      if (this.survivalRules() && Inventory.count(id) <= 0) { this.toast('You have no doors left'); return; }
       this.world.setBlock(x, y, z, B.DOOR_LOWER);
       this.world.setBlock(x, y + 1, z, B.DOOR_UPPER);
       Sound.place();
-      if (this.mode === 'survival') { Inventory.take(id, 1); this.updateHotbarUI(); }
+      if (this.survivalRules()) { Inventory.take(id, 1); this.updateHotbarUI(); }
       return;
     }
     if (this.world.setBlock(x, y, z, id)) {
+      BedWars.notePlaced(x, y, z);
       if (id === B.CHEST) this.world.chests.set(x + ',' + y + ',' + z, []);
       Sound.place();
-      if (this.mode === 'survival') { Inventory.take(id, 1); this.updateHotbarUI(); }
+      if (this.survivalRules()) { Inventory.take(id, 1); this.updateHotbarUI(); }
     }
   },
+  // Looking well down while on the move means you are running a bridge out, not
+  // building: every click then goes into the walkway, never on top of it.
+  bridging() {
+    const p = this.player;
+    if (p.flying || p.groundY === null || p.pitch > -0.7) return false;
+    return !!(this.input.forward || this.input.back || this.input.left || this.input.right);
+  },
+
+  // God bridging: look down over the drop, run, and keep clicking — each click
+  // lays the block you are about to land on. It only ever fills a gap at the
+  // level you last walked on, and only beside something solid, so it extends a
+  // walkway and can never be used to build out in mid-air.
+  // Where the next plank would go, if you asked for one. Returns null when there
+  // is nowhere sensible — which is also what stops the outline being drawn.
+  bridgeTarget(id) {
+    const p = this.player;
+    if (!id || isItem(id) || p.flying) return null;
+    if (p.pitch > -0.35) return null;                        // you have to be looking down
+    const y = p.groundY;
+    if (y === null || p.pos[1] > y + 1.7 || p.pos[1] < y - 2.5) return null;
+    const s = Math.sin(p.yaw), c = Math.cos(p.yaw);
+    const spots = [
+      [Math.floor(p.pos[0]), Math.floor(p.pos[2])],                    // under your feet
+      [Math.floor(p.pos[0] + s * 0.8), Math.floor(p.pos[2] - c * 0.8)], // the step ahead
+    ];
+    for (const [x, z] of spots) {
+      if (this.world.getBlock(x, y, z)) continue;                      // something already there
+      for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        if (isSolid(this.world.getBlock(x + dx, y, z + dz))) return [x, y, z];
+      }
+    }
+    return null;                                                       // never a block in thin air
+  },
+
+  bridgeAssist(id) {
+    const spot = this.bridgeTarget(id);
+    if (!spot) return false;
+    if (this.survivalRules() && Inventory.count(id) <= 0) {
+      this.toast('You have no ' + thingName(id) + ' left');
+      return false;
+    }
+    const [x, y, z] = spot;
+    if (!this.world.setBlock(x, y, z, id)) return false;
+    BedWars.notePlaced(x, y, z);
+    Sound.place();
+    if (this.survivalRules()) { Inventory.take(id, 1); this.updateHotbarUI(); }
+    return true;
+  },
+
   toggleFly() {
-    if (this.mode === 'survival') {
+    if (this.survivalRules()) {
       this.player.flying = false;          // never leave survival airborne
       this.toast('Flying is creative only');
       return;
@@ -6512,6 +8324,20 @@ const Game = {
     this.toast('Ate ' + def.name);
   },
 
+  // A picked-up thing takes the first empty hotbar slot, so it is ready to use
+  // without opening the bag. Anything already on the bar stays where it is.
+  hotbarStow(id) {
+    if (!id) return false;
+    for (let i = 0; i < 9; i++) if (this.hotbar[i] === id) return false;
+    for (let i = 0; i < 9; i++) {
+      if (this.hotbar[i]) continue;
+      this.hotbar[i] = id;
+      if (i === this.slot) this.renderer.buildHandMesh(id);
+      return true;
+    }
+    return false;
+  },
+
   // Drop hotbar entries for items you no longer carry.
   hotbarCheck() {
     for (let i = 0; i < 9; i++) {
@@ -6633,11 +8459,14 @@ const Game = {
       });
       Drops.update(dt, this.world, this.player, d => {
         Inventory.add(d.id, d.count);
+        this.hotbarStow(d.id);
         Sound.burst({ dur: 0.07, freq: 1100, gain: 0.18, sweep: 1.4 });
         this.toast('Picked up ' + thingName(d.id) + (d.count > 1 ? ' \u00d7' + d.count : ''));
         this.updateHotbarUI();
         if (this.inventoryOpen) this.refreshCraft();
       });
+      BedWars.update(dt, this);
+      Hunger.update(dt, this);
       this.checkDeath();
       this.updatePortal(dt);
       if (this.player.inWater !== wasInWater) Sound.splash();
@@ -6651,7 +8480,14 @@ const Game = {
       } else if (breaking) {
         this.updateMining(dt);
       } else this.mining = null;
-      if ((this.mouse.right && locked) || this.keyPlace) { this.placeTimer -= dt; if (this.placeTimer <= 0) { this.placeBlock(true); this.placeTimer = 0.22; } }
+      if ((this.mouse.right && locked) || this.keyPlace) {
+        this.placeTimer -= dt;
+        if (this.placeTimer <= 0) {
+          const fast = this.bridging();          // keep up with a sprint
+          this.placeBlock(true);
+          this.placeTimer = fast ? 0.08 : 0.22;
+        }
+      }
     }
 
     this.waterScroll = (this.waterScroll + dt * 0.06) % 1;
@@ -6711,6 +8547,12 @@ const Game = {
     const hit = this.ready ? p.raycast() : null;
     this.lastHit = hit;
 
+    // The outline of the block you are about to lay, shown exactly when a click
+    // would actually lay it there.
+    let ghost = null;
+    const held = this.hotbar[this.slot];
+    if (this.ready && held && !isItem(held) && (this.bridging() || !hit)) ghost = this.bridgeTarget(held);
+
     return {
       eye: [p.pos[0], p.pos[1] + P_EYE + p.bob, p.pos[2]],
       dir: p.dir,
@@ -6721,6 +8563,7 @@ const Game = {
       mobs: Animals.list,
       drops: Drops.list.concat(Thrown.list),
       highlight: hit ? [hit.x, hit.y, hit.z] : null,
+      ghost,
       breakPos: this.mining ? [this.mining.x, this.mining.y, this.mining.z] : null,
       breakStage: this.mining && isFinite(this.mining.total)
         ? Math.min(9, Math.floor(this.mining.t / this.mining.total * 10)) : -1,
@@ -6752,7 +8595,7 @@ const Game = {
       img.src = id ? thingIcon(id) : '';
       img.style.visibility = id ? 'visible' : 'hidden';
       const badge = s.querySelector('.have');
-      const showCount = id && (isItem(id) || this.mode === 'survival');
+      const showCount = id && (isItem(id) || this.survivalRules());
       badge.textContent = showCount ? Inventory.count(id) : '';
       badge.classList.toggle('none', showCount && Inventory.count(id) === 0);
     });
@@ -6771,12 +8614,127 @@ const Game = {
     filter.addEventListener('keydown', e => e.stopPropagation());
   },
 
+  // ---- Dragging a stack out of the inventory ---------------------------
+  // Grab a slot, pull it off the window and let go: the stack sails out in
+  // front of you as a real dropped item. Shift while letting go throws one.
+  stackDragInit() {
+    if (this.stackDragReady) return;
+    this.stackDragReady = true;
+    document.addEventListener('pointermove', e => this.stackDragMove(e));
+    document.addEventListener('pointerup', e => this.stackDragEnd(e));
+    document.addEventListener('pointercancel', () => this.stackDragCancel());
+  },
+
+  // Mark a slot as something you can pull out. `src` says where the stack lives.
+  makeDraggable(el, src) {
+    if (!src.id) return el;
+    el.classList.add('draggable');
+    // without this the browser runs off with its own image drag and cancels ours
+    el.addEventListener('dragstart', e => e.preventDefault());
+    el.addEventListener('pointerdown', e => {
+      if (e.button !== 0) return;
+      this.stackDragInit();
+      this.stackDrag = { src, x0: e.clientX, y0: e.clientY, live: false, ghost: null };
+      if (el.setPointerCapture) { try { el.setPointerCapture(e.pointerId); } catch (err) {} }
+    });
+    return el;
+  },
+
+  stackDragMove(e) {
+    const d = this.stackDrag;
+    if (!d) return;
+    if (!d.live) {
+      if (Math.hypot(e.clientX - d.x0, e.clientY - d.y0) < 6) return;
+      d.live = true;
+      d.ghost = document.createElement('div');
+      d.ghost.className = 'drag-ghost';
+      d.ghost.innerHTML = '<img src="' + thingIcon(d.src.id) + '" alt="" draggable="false">';
+      document.body.appendChild(d.ghost);
+      document.body.classList.add('dragging-stack');
+    }
+    d.ghost.style.left = e.clientX + 'px';
+    d.ghost.style.top = e.clientY + 'px';
+    const out = this.overDropTarget(e);
+    d.ghost.classList.toggle('over-world', out);
+    document.getElementById('dropzone').classList.toggle('hot', out);
+  },
+
+  // Where a release counts as throwing the stack away: the drop bar along the
+  // bottom, or anywhere clear of the open window. The bar is hit-tested by its
+  // rectangle because it does not take pointer events itself.
+  overDropTarget(e) {
+    const zone = document.getElementById('dropzone').getBoundingClientRect();
+    if (zone.height && e.clientY >= zone.top) return true;
+    const el = document.elementFromPoint(e.clientX, e.clientY);
+    return !(el && el.closest && el.closest('.panel'));
+  },
+
+  stackDragCancel() {
+    const d = this.stackDrag;
+    this.stackDrag = null;
+    if (!d) return;
+    if (d.ghost) d.ghost.remove();
+    document.body.classList.remove('dragging-stack');
+    document.getElementById('dropzone').classList.remove('hot');
+  },
+
+  stackDragEnd(e) {
+    const d = this.stackDrag;
+    if (!d) return;
+    const live = d.live, src = d.src;
+    this.stackDragCancel();
+    if (!live) return;                       // a plain click: leave it to the slot
+    // swallow the click this pointerup is about to produce
+    const eat = ev => { ev.stopPropagation(); ev.preventDefault(); };
+    window.addEventListener('click', eat, true);
+    setTimeout(() => window.removeEventListener('click', eat, true), 0);
+    if (!this.overDropTarget(e)) return;      // let go inside the window: nothing happens
+    this.dropFrom(src, e.shiftKey ? 1 : Infinity);
+  },
+
+  // Throw `want` of a stack away, taking it from wherever the slot was fed from.
+  dropFrom(src, want) {
+    const id = src.id;
+    if (!id) return;
+    if (src.kind === 'armour') {
+      if (Equipment[src.slot] !== id || !Equipment.unequip(src.slot)) return;
+      want = 1;                              // the piece you were wearing, not your spares
+    }
+    let have = Inventory.count(id);
+    if (src.kind === 'hotbar' && have <= 0) {
+      this.hotbar[src.slot] = 0;             // a creative block with nothing behind it
+      this.toast('Cleared slot ' + (src.slot + 1));
+      this.updateHotbarUI();
+      this.renderer.buildHandMesh(this.hotbar[this.slot]);
+      this.refreshCraft();
+      return;
+    }
+    const n = Math.min(have, want);
+    if (n <= 0) return;
+    Inventory.take(id, n);
+    this.dropStack(id, n);
+    if (src.kind === 'hotbar' && (want === Infinity || Inventory.count(id) <= 0)) this.hotbar[src.slot] = 0;
+    this.toast('Dropped ' + thingName(id) + (n > 1 ? ' \u00d7' + n : ''));
+    this.hotbarCheck();
+    this.refreshCraft();
+  },
+
+  // The stack leaves your hands and arcs out in front of you.
+  dropStack(id, n) {
+    const eye = this.player.eye, dir = this.player.dir;
+    const d = Drops.spawn(this.world, eye[0] + dir[0] * 0.6, eye[1] + dir[1] * 0.6 - 0.2, eye[2] + dir[2] * 0.6, id, n, 0);
+    if (!d) return;
+    d.vx = dir[0] * 6; d.vy = dir[1] * 6 + 1.8; d.vz = dir[2] * 6;
+    d.delay = 1.6;                           // so you do not scoop it straight back up
+    Sound.burst({ dur: 0.11, freq: 360, gain: 0.18, sweep: 0.7 });
+  },
+
   // One inventory slot: an icon, a stack count, and a name on hover.
   slotEl(id, count, onClick, opts = {}) {
     const el = document.createElement('div');
     el.className = 'mcslot' + (id ? '' : ' empty') + (opts.className ? ' ' + opts.className : '');
     if (id) {
-      el.innerHTML = '<img src="' + thingIcon(id) + '" alt="">' +
+      el.innerHTML = '<img src="' + thingIcon(id) + '" alt="" draggable="false">' +
         (count > 1 ? '<span class="n">' + count + '</span>' : '');
       el.title = thingName(id) + (count > 1 ? ' \u00d7' + count : '');
     } else if (opts.placeholder) {
@@ -6803,7 +8761,7 @@ const Game = {
     } else {
       this.hotbar[this.slot] = id;
       this.renderer.buildHandMesh(id);
-      if (count > 1 || this.mode === 'survival') Inventory.add(id, count);
+      if (count > 1 || this.survivalRules()) Inventory.add(id, count);
       this.toast(thingName(id) + ' in slot ' + (this.slot + 1));
     }
     this.updateHotbarUI();
@@ -6847,7 +8805,10 @@ const Game = {
       const worn = Equipment[slotName];
       const cell = this.slotEl(worn, 1, () => { if (Equipment.unequip(slotName)) this.refreshCraft(); },
         { placeholder: labels[slotName], title: 'Empty ' + labels[slotName] + ' slot' });
-      if (worn) cell.title = thingName(worn) + ' — click to take off';
+      if (worn) {
+        cell.title = thingName(worn) + ' — click to take off, drag out to drop';
+        this.makeDraggable(cell, { kind: 'armour', slot: slotName, id: worn });
+      }
       armourRow.appendChild(cell);
     }
     for (const part of document.querySelectorAll('.doll-part')) {
@@ -6919,6 +8880,8 @@ const Game = {
         this.brush = this.brush === id ? 0 : id;
         this.refreshCraft();
       });
+      this.makeDraggable(cell, { kind: 'inv', id });
+      cell.title += ' — drag out of the window to drop it';
       if (this.brush === id) cell.classList.add('selected');
       if (id === this.justMade) {
         cell.classList.add('just-made');
@@ -6934,10 +8897,11 @@ const Game = {
     for (let i = 0; i < 9; i++) {
       const id = this.hotbar[i];
       const count = id ? Inventory.count(id) : 0;
-      const cell = this.slotEl(id, isItem(id) || this.mode === 'survival' ? count : 1,
+      const cell = this.slotEl(id, isItem(id) || this.survivalRules() ? count : 1,
         () => { this.selectSlot(i); this.refreshCraft(); },
         { placeholder: String(i + 1), title: 'Hotbar slot ' + (i + 1) });
       if (i === this.slot) cell.classList.add('current');
+      if (id) this.makeDraggable(cell, { kind: 'hotbar', slot: i, id });
       bar.appendChild(cell);
     }
 
@@ -7031,6 +8995,8 @@ const Game = {
 
   checkDeath() {
     if (!this.player.dead || this.dying) return;
+    if (BedWars.active && BedWars.phase === 'playing') { BedWars.playerDied(this); return; }
+    if (Hunger.active && Hunger.phase !== 'over') { Hunger.playerDied(this); return; }
     this.dying = true;
     const lost = this.dropEverything();
     document.getElementById('died-reason').textContent =
@@ -7263,6 +9229,7 @@ const Game = {
 
   // ---- persistence -----------------------------------------------------
   save(silent) {
+    if (ARENA_MODES[this.dimension]) return;       // a match is not a world worth keeping
     try {
       const edits = [...this.world.edits.entries()];
       if (edits.length > 120000) edits.length = 120000;

@@ -16,6 +16,7 @@ class Player {
     this.maxHp = 20; this.hp = 20;
     this.air = 15; this.maxAir = 15;         // seconds of breath
     this.fallFrom = null;
+    this.groundY = null;          // level of the block last stood on, for bridging
     this.hurtFlash = 0; this.invuln = 0; this.sinceHurt = 99;
     this.dead = false;
     this.invulnerable = false;    // creative mode sets this
@@ -133,6 +134,10 @@ class Player {
       if (this.vel[1] < -TERMINAL) this.vel[1] = -TERMINAL;
     }
 
+    // Sneaking holds you on the block you are standing on rather than letting you
+    // walk off it. It is what makes bridging out over a drop possible: you edge
+    // out, look back down at the block face, and lay the next one.
+    const edgeGuard = input.sneak && !this.flying && this.onGround && this.vel[1] <= 0;
     this.onGround = false;
     // sub-step so fast movement cannot tunnel through blocks
     const dist = Math.hypot(this.vel[0], this.vel[1], this.vel[2]) * dt;
@@ -140,14 +145,20 @@ class Player {
     const sdt = dt / steps;
     for (let i = 0; i < steps; i++) {
       this.moveAxis(1, this.vel[1] * sdt);
+      const backX = this.pos[0];
       this.moveAxis(0, this.vel[0] * sdt);
+      if (edgeGuard && !this.overSolidGround()) { this.pos[0] = backX; this.vel[0] = 0; }
+      const backZ = this.pos[2];
       this.moveAxis(2, this.vel[2] * sdt);
+      if (edgeGuard && !this.overSolidGround()) { this.pos[2] = backZ; this.vel[2] = 0; }
     }
     if (this.pos[1] < -4 && w.dimension === 'end') {
       this.invuln = 0;
       this.damage(20, 'the void');
       this.pos[1] = 90; this.vel[1] = 0; this.fallFrom = null;
     } else if (this.pos[1] < -20) { this.pos[1] = CY - 8; this.vel[1] = 0; this.fallFrom = null; }
+
+    if (this.onGround) this.groundY = Math.floor(this.pos[1] - 0.02);
 
     const hspeed = Math.hypot(this.vel[0], this.vel[2]);
     if (this.onGround && hspeed > 0.5) this.walkPhase += dt * hspeed * 1.9;
@@ -235,6 +246,15 @@ class Player {
       }
     }
     return null;
+  }
+
+  // Is anything solid directly under the player's feet?
+  overSolidGround() {
+    const y = Math.floor(this.pos[1] - 0.02);
+    for (let zz = Math.floor(this.pos[2] - P_HALF); zz <= Math.floor(this.pos[2] + P_HALF); zz++)
+      for (let xx = Math.floor(this.pos[0] - P_HALF); xx <= Math.floor(this.pos[0] + P_HALF); xx++)
+        if (isSolid(this.world.getBlock(xx, y, zz))) return true;
+    return false;
   }
 
   // Would placing a block here trap the player inside it?

@@ -43,7 +43,7 @@ class World {
 
   getBlock(x, y, z) {
     // the End has nothing under it: step off the island and you fall out of the world
-    if (y < 0) return this.dimension === 'end' ? 0 : B.BEDROCK;
+    if (y < 0) return (this.dimension === 'end' || this.dimension === 'bedwars' || this.dimension === 'rush' || this.dimension === 'hunger') ? 0 : B.BEDROCK;
     if (y >= CY) return 0;
     const c = this.chunks.get(this.key(x >> 4, z >> 4));
     if (!c) return 0;
@@ -114,6 +114,8 @@ class World {
   generateChunk(cx, cz) {
     if (this.dimension === 'nether') return this.generateNether(cx, cz);
     if (this.dimension === 'end') return this.generateEnd(cx, cz);
+    if (this.dimension === 'bedwars' || this.dimension === 'rush') return BedWars.generateChunk(this, cx, cz);
+    if (this.dimension === 'hunger') return Hunger.generateChunk(this, cx, cz);
     const c = new Chunk(cx, cz);
     this.chunks.set(this.key(cx, cz), c);
     const bx = cx * CX, bz = cz * CZ;

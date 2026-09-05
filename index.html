@@ -18,6 +18,8 @@
   <div id="crosshair"></div>
   <div id="debug" class="hidden"></div>
   <div id="toast"></div>
+  <div id="arenaboard" class="hidden"></div>
+  <div id="arenanews" class="hidden"></div>
   <div id="bottom">
     <div id="blockname"></div>
     <div id="airbar"></div>
@@ -28,6 +30,9 @@
     <div id="hotbar"></div>
   </div>
 </div>
+
+<!-- Appears only while dragging a stack: an unmissable target for throwing it away. -->
+<div id="dropzone" aria-hidden="true"><span>Let go here to drop it into the world</span></div>
 
 <div id="inventory">
   <div class="panel mc-window">
@@ -65,7 +70,7 @@
         </div>
       </div>
 
-      <div class="mc-label">Inventory <span class="sub2" id="mat-hint">click a tool to hold it &middot; click armour to wear it &middot; shift-click anything to the hotbar</span></div>
+      <div class="mc-label">Inventory <span class="sub2" id="mat-hint">click a tool to hold it &middot; click armour to wear it &middot; shift-click anything to the hotbar &middot; drag a slot downwards to drop it (shift for one)</span></div>
       <div id="craft-mats" class="mc-grid"></div>
 
       <div class="mc-label">Hotbar</div>
@@ -102,6 +107,18 @@
         <button class="mode-card" data-mode="survival">
           <b>Survival</b>
           <span>No flying. Mine what you build with, and mind your health.</span>
+        </button>
+        <button class="mode-card" data-mode="rush">
+          <b>Rush</b>
+          <span>Bed Wars with the waiting cut out: two teams, bases within sight, and generators that never stop.</span>
+        </button>
+        <button class="mode-card" data-mode="hunger">
+          <b>Hunger Games</b>
+          <span>Eight tributes, one island. Loot the chests, outlast the rest, and mind the closing ring.</span>
+        </button>
+        <button class="mode-card" data-mode="bedwars">
+          <b>Bed Wars</b>
+          <span>Four teams on floating islands. Guard your bed, break theirs, and the last team standing wins.</span>
         </button>
       </div>
       <button id="play" class="primary">Play</button>
@@ -151,7 +168,8 @@
         <div><kbd>&larr;</kbd><kbd>&uarr;</kbd><kbd>&darr;</kbd><kbd>&rarr;</kbd><span>Move</span></div>
         <div><kbd>Mouse</kbd><span>Look around</span></div>
         <div><kbd>Space</kbd><span>Jump &middot; double-tap to fly</span></div>
-        <div><kbd>Shift</kbd><span>Sneak &middot; descend while flying</span></div>
+        <div><kbd>Shift</kbd><span>Sneak &middot; hold at an edge to bridge</span></div>
+        <div>Look down + run<span>God bridge: click to lay blocks as you go</span></div>
         <div><kbd>S</kbd><span>Sprint</span></div>
         <div><kbd>M</kbd> / <kbd>Left click</kbd><span>Break block &middot; attack</span></div>
         <div><kbd>P</kbd> / <kbd>Right click</kbd><span>Place &middot; use &middot; eat</span></div>
@@ -205,6 +223,26 @@
   </div>
 </div>
 
+<div id="shop">
+  <div class="panel trade-panel">
+    <div class="mc-head">
+      <h2>Team shop</h2>
+      <p class="hint">Spend what the generators give you &middot; <kbd>Esc</kbd> to close</p>
+    </div>
+    <div class="trade-purse" id="shop-purse"></div>
+    <div id="shop-list"></div>
+  </div>
+</div>
+
+<div id="arenaend" class="overlay hidden">
+  <div class="panel">
+    <h1 id="arenaend-title">Game over</h1>
+    <p class="sub" id="arenaend-sub"></p>
+    <button id="arenaend-again" class="primary">Play again</button>
+    <div class="menu-buttons"><button id="arenaend-leave">Back to the overworld</button></div>
+  </div>
+</div>
+
 <div id="died" class="overlay hidden">
   <div class="panel">
     <h1>You died</h1>
@@ -233,6 +271,8 @@
 <script src="js/portal.js"></script>
 <script src="js/drops.js"></script>
 <script src="js/entities.js"></script>
+<script src="js/bedwars.js"></script>
+<script src="js/hunger.js"></script>
 <script src="js/renderer.js"></script>
 <script src="js/player.js"></script>
 <script src="js/sound.js"></script>

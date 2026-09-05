@@ -557,6 +557,7 @@ class Mob {
   }
 
   update(dt, world, player) {
+    if (this.def.bot) return (this.def.arena === 'hunger' ? Hunger : BedWars).botUpdate(this, dt, world, player);
     if (this.def.flies) return this.flyUpdate(dt, world, player);
     const inWater = isLiquid(world.getBlock(Math.floor(this.x), Math.floor(this.y + 0.1), Math.floor(this.z)));
 
@@ -796,6 +797,7 @@ const Animals = {
     const maxD = viewDist * CX + 26;
     this.list = this.list.filter(m => {
       if (m.dead) return false;
+      if (m.def.bot) return true;              // match bots live until the match kills them
       if (Math.abs(m.x - player.pos[0]) > maxD || Math.abs(m.z - player.pos[2]) > maxD) return false;
       return !!world.getChunk(Math.floor(m.x) >> 4, Math.floor(m.z) >> 4);
     });

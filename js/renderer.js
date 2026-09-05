@@ -591,6 +591,18 @@ class Renderer {
       gl.useProgram(this.chunkProg);
     }
 
+    // --- the outline of the block a click would place, drawn bright so it reads
+    // against the sky when you are out over a drop
+    if (scene.ghost) {
+      gl.useProgram(this.lineProg);
+      gl.uniformMatrix4fv(this.uLine.uViewProj, false, this.viewProj);
+      gl.uniform3fv(this.uLine.uOffset, scene.ghost);
+      gl.uniform4f(this.uLine.uColor, 0.95, 0.99, 1.0, 0.9);
+      gl.bindVertexArray(this.lineVAO);
+      gl.drawArrays(gl.LINES, 0, 24);
+      gl.useProgram(this.chunkProg);
+    }
+
     // --- water and other translucent faces, back to front
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
