@@ -370,6 +370,9 @@ const BedWars = {
         const nx = Math.floor(mob.x + Math.sin(mob.yaw) * ahead);
         const nz = Math.floor(mob.z - Math.cos(mob.yaw) * ahead);
         if (isSolid(world.getBlock(nx, fy, nz))) continue;
+        // Never lay a block into someone: bridging up under your feet used to
+        // shove you out of the way, which is not a thing a player could do to you.
+        if (player && player.intersectsBlock(nx, fy, nz)) continue;
         world.setBlock(nx, fy, nz, team.wool);
         this.notePlaced(nx, fy, nz);
         mob.bwBlocks--;
@@ -414,15 +417,16 @@ const BedWars = {
       } else mob.bwBreakTimer = 0;
     } else {
       mob.bwBreakTimer = 0;
-      if (target && target.kind === 'foe' && dist < 2.4 && mob.attackCd <= 0) {
+      const reachesYou = target && !target.mob ? Math.abs(player.pos[1] - mob.y) < 2.3 : true;
+      if (target && target.kind === 'foe' && dist < 2.4 && reachesYou && mob.attackCd <= 0) {
         mob.attackCd = 0.7 + Math.random() * 0.7;
         mob.swing = 1;
         this.botStrike(mob, team, target, player);
       }
     }
 
-    // They never come looking for you — you are not on the list of things worth
-    // walking towards — but get inside arm's reach of one and it will swing.
+    // Even one that is busy with something else will swing if you walk into
+    // arm's reach of it.
     if (team !== this.you && !player.dead && mob.attackCd <= 0) {
       const pdx = player.pos[0] - mob.x, pdz = player.pos[2] - mob.z;
       if (Math.hypot(pdx, pdz) < 2.3 && Math.abs(player.pos[1] - mob.y) < 2.3) {
@@ -533,7 +537,12 @@ const BedWars = {
       const push = 4 / Math.max(0.7, Math.hypot(dx, dz));
       foe.vx += dx * push; foe.vz += dz * push; foe.vy = 3;
       if (foe.hp <= 0) this.botDied(foe, team.name);
+      return;
     }
+    // A foe with no mob on it is you. Without this the chase ended in a swing
+    // that made a noise and nothing else — and the cooldown it set then kept the
+    // opportunistic swing below from ever landing either.
+    if (team !== this.you && player && !player.dead) this.strikePlayer(mob, team, player);
   },
 
   botDied(mob, by) {

@@ -36,6 +36,7 @@ class World {
     this.villages = new Map();
     this.strongholds = new Map();
     this.chests = new Map();      // "x,y,z" -> [[id, count], ...]        // cached column data, cleared between chunk builds
+    this.micro = new Map();       // "x,y,z" -> Uint8Array(512), the pixel blocks in that cell
     this.darkstones = new Map();  // "x,y,z" -> [x,y,z] for every darkstone placed
     this.shroud = new Set();      // "x,y,z" of every cell those darkstones hold in the dark
   }
@@ -51,6 +52,93 @@ class World {
     if (!c) return 0;
     return c.blocks[idx(x & 15, y, z & 15)];
   }
+  // ---- pixel blocks ----------------------------------------------------
+  // Everything below works in pixel coordinates: whole-block coordinates times
+  // MICRO. A cell of a whole block reads as that block all the way through, so
+  // one walk over the pixel grid sees the ordinary world and the pixel world at
+  // once.
+  getMicro(px, py, pz) {
+    const bx = microFloor(px), by = microFloor(py), bz = microFloor(pz);
+    const host = this.getBlock(bx, by, bz);
+    if (host !== B.MICRO) return host;
+    const cell = this.micro.get(bx + ',' + by + ',' + bz);
+    if (!cell) return 0;
+    return cell[midx(px - bx * MICRO, py - by * MICRO, pz - bz * MICRO)];
+  }
+
+  // Break a whole block up into the pixels it is made of, so it can be carved.
+  // Air opens as an empty cell; anything shaped, liquid or indestructible says no.
+  openMicro(bx, by, bz) {
+    const key = bx + ',' + by + ',' + bz;
+    const existing = this.micro.get(key);
+    if (existing) return existing;
+    const host = this.getBlock(bx, by, bz);
+    if (host !== 0) {
+      const def = BLOCKS[host];
+      if (!def.solid || def.liquid || def.boxes || host === B.BEDROCK) return null;
+    }
+    const cell = new Uint8Array(MICRO_VOL);
+    if (host !== 0) cell.fill(host);
+    this.micro.set(key, cell);
+    if (!this.setBlock(bx, by, bz, B.MICRO)) { this.micro.delete(key); return null; }
+    return cell;
+  }
+
+  setMicro(px, py, pz, id) {
+    const bx = microFloor(px), by = microFloor(py), bz = microFloor(pz);
+    if (by < 0 || by >= CY) return false;
+    const cell = this.openMicro(bx, by, bz);
+    if (!cell) return false;
+    const i = midx(px - bx * MICRO, py - by * MICRO, pz - bz * MICRO);
+    if (cell[i] === id) return false;
+    cell[i] = id;
+    if (cell.some(v => v)) {
+      this.touchMicro(bx, by, bz);
+    } else {
+      // the last pixel went: the cell is plain air again
+      this.micro.delete(bx + ',' + by + ',' + bz);
+      this.setBlock(bx, by, bz, 0);
+    }
+    return true;
+  }
+
+  // Changing pixels inside a cell does not go through setBlock, so the chunk it
+  // sits in — and any neighbour whose own faces it could uncover — is remeshed here.
+  touchMicro(bx, by, bz) {
+    for (let dx = -1; dx <= 1; dx++)
+      for (let dz = -1; dz <= 1; dz++) {
+        const c = this.getChunk((bx + dx) >> 4, (bz + dz) >> 4);
+        if (c) c.dirty = true;
+      }
+    this.markDirty(bx, bz);
+  }
+
+  // Pixel cells, run-length encoded, so a solid cell costs two numbers.
+  serializeMicro(limit = 4000) {
+    const out = [];
+    for (const [key, cell] of this.micro) {
+      if (out.length >= limit) break;
+      const rle = [];
+      let run = 1;
+      for (let i = 1; i <= MICRO_VOL; i++) {
+        if (i < MICRO_VOL && cell[i] === cell[i - 1]) { run++; continue; }
+        rle.push(run, cell[i - 1]);
+        run = 1;
+      }
+      out.push([key, rle]);
+    }
+    return out;
+  }
+  loadMicro(list) {
+    for (const [key, rle] of list || []) {
+      const cell = new Uint8Array(MICRO_VOL);
+      let p = 0;
+      for (let i = 0; i < rle.length && p < MICRO_VOL; i += 2)
+        for (let k = 0; k < rle[i] && p < MICRO_VOL; k++) cell[p++] = rle[i + 1];
+      this.micro.set(key, cell);
+    }
+  }
+
   // Treats not-yet-loaded chunks as solid so we never mesh a hole into the world.
   getBlockOrSolid(x, y, z) {
     if (y < 0) return B.BEDROCK;
@@ -1051,6 +1139,8 @@ class World {
     c.blocks[i] = id;
     if (id) c.empty = false;
     if (record) this.edits.set(x + ',' + y + ',' + z, id);
+    // whatever a cell becomes, if it is no longer pixels its pixels are gone
+    if (old === B.MICRO && id !== B.MICRO) this.micro.delete(x + ',' + y + ',' + z);
 
     const col = (z & 15) * CX + (x & 15);
     if (BLOCKS[id].opaque) { if (y > c.hmap[col]) c.hmap[col] = y; }

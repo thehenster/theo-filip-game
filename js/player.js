@@ -27,6 +27,31 @@ class Player {
     this.shield = 0;              // seconds of Warden's Plate left
     this.noFall = false;          // the next landing is free, however far it was
     this.spawn = null;
+    this.scale = 1;              // 1 is your own size; the Ant-Man suit drives it down
+    this.targetScale = 1;
+  }
+
+  // Every size below is derived, so shrinking is a real, smaller body: it
+  // collides, climbs and sees the world from where its own eyes actually are.
+  get half() { return P_HALF * this.scale; }
+  get height() { return P_HEIGHT * this.scale; }
+  get eyeHeight() { return P_EYE * this.scale; }
+  get stepUp() { return STEP_UP * this.scale; }
+  get tiny() { return this.scale < 0.9; }
+  get big() { return this.scale > 1.1; }
+
+  // Is there room here for the body we are about to have?
+  roomAtScale(scale) {
+    const was = this.scale;
+    this.scale = scale;
+    const blocked = this.collides(this.pos[0], this.pos[1], this.pos[2]);
+    this.scale = was;
+    return !blocked;
+  }
+  resize(scale) {
+    if (!this.roomAtScale(scale)) return false;
+    this.targetScale = scale;
+    return true;
   }
 
   // Damage in half-hearts; armour soaks up its share first.
@@ -49,10 +74,11 @@ class Player {
     this.food = this.maxFood; this.water = this.maxWater; this.exert = 0;
     this.dead = false; this.invuln = 1; this.fallFrom = null;
     this.vel = [0, 0, 0];
+    this.scale = this.targetScale = 1;
     if (this.spawn) this.pos = this.spawn.slice();
   }
 
-  get eye() { return [this.pos[0], this.pos[1] + P_EYE, this.pos[2]]; }
+  get eye() { return [this.pos[0], this.pos[1] + this.eyeHeight, this.pos[2]]; }
   get dir() {
     const cp = Math.cos(this.pitch);
     return [Math.sin(this.yaw) * cp, Math.sin(this.pitch), -Math.cos(this.yaw) * cp];
@@ -60,15 +86,68 @@ class Player {
 
   collides(x, y, z) {
     const w = this.world;
-    const x0 = Math.floor(x - P_HALF), x1 = Math.floor(x + P_HALF);
-    const y0 = Math.floor(y), y1 = Math.floor(y + P_HEIGHT - 0.001);
-    const z0 = Math.floor(z - P_HALF), z1 = Math.floor(z + P_HALF);
+    const hw = this.half, ht = this.height;
+    const x0 = Math.floor(x - hw), x1 = Math.floor(x + hw);
+    const y0 = Math.floor(y), y1 = Math.floor(y + ht - 0.001);
+    const z0 = Math.floor(z - hw), z1 = Math.floor(z + hw);
     for (let yy = y0; yy <= y1; yy++)
       for (let zz = z0; zz <= z1; zz++)
         for (let xx = x0; xx <= x1; xx++) {
           const id = w.getBlock(xx, yy, zz);
-          if (id && blockHits(id, xx, yy, zz, x - P_HALF, y, z - P_HALF, x + P_HALF, y + P_HEIGHT, z + P_HALF)) return true;
+          if (!id) continue;
+          // Pixel blocks only stop something small enough to notice them; at
+          // full size you step straight over a cell of them.
+          if (BLOCKS[id].micro) {
+            if (this.tiny && this.microHits(xx, yy, zz, x - hw, y, z - hw, x + hw, y + ht, z + hw)) return true;
+            continue;
+          }
+          if (blockHits(id, xx, yy, zz, x - hw, y, z - hw, x + hw, y + ht, z + hw)) return true;
         }
+    return false;
+  }
+
+  // Does the box overlap any filled pixel of the cell at (cx,cy,cz)?
+  microHits(cx, cy, cz, x0, y0, z0, x1, y1, z1) {
+    const cell = this.world.micro.get(cx + ',' + cy + ',' + cz);
+    if (!cell) return false;
+    const lo = (v, c) => Math.max(0, Math.floor((v - c) * MICRO));
+    const hi = (v, c) => Math.min(MICRO - 1, Math.ceil((v - c) * MICRO) - 1);
+    const i0 = lo(x0, cx), i1 = hi(x1, cx);
+    const j0 = lo(y0, cy), j1 = hi(y1, cy);
+    const k0 = lo(z0, cz), k1 = hi(z1, cz);
+    for (let j = j0; j <= j1; j++)
+      for (let k = k0; k <= k1; k++)
+        for (let i = i0; i <= i1; i++)
+          if (cell[midx(i, j, k)]) return true;
+    return false;
+  }
+
+  // Chunks load in around you, blocks grow, teleports land you where the ground
+  // turned out to be: any of them can leave you standing inside a block. Once
+  // that happens every axis collides at once, so every move is undone and no
+  // key — not even jump — gets you out again. Lift clear before moving.
+  unstick() {
+    const [x, y, z] = this.pos;
+    if (!this.collides(x, y, z)) return false;
+    for (let dy = 0.05; dy <= 20; dy += 0.05) {
+      if (!this.collides(x, y + dy, z)) {
+        this.pos[1] = y + dy;
+        this.vel[1] = 0;
+        this.fallFrom = null;         // we were put here, we did not fall here
+        return true;
+      }
+    }
+    // Buried: look outwards for daylight instead, nearest ring first.
+    const ring = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
+    for (let r = 1; r <= 4; r++)
+      for (const [dx, dz] of ring)
+        for (let dy = 0; dy <= 4; dy++)
+          if (!this.collides(x + dx * r, y + dy, z + dz * r)) {
+            this.pos = [x + dx * r, y + dy, z + dz * r];
+            this.vel = [0, 0, 0];
+            this.fallFrom = null;
+            return true;
+          }
     return false;
   }
 
@@ -82,7 +161,7 @@ class Player {
       // makes a staircase a staircase.
       if (axis !== 1 && !this.flying && this.vel[1] <= 0.01) {
         const wasY = p[1];
-        p[1] += STEP_UP;
+        p[1] += this.stepUp;
         if (!this.collides(p[0], p[1], p[2])) return;
         p[1] = wasY;
       }
@@ -102,8 +181,16 @@ class Player {
 
   update(dt, input) {
     const w = this.world;
+    this.unstick();
     const feet = w.getBlock(Math.floor(this.pos[0]), Math.floor(this.pos[1] + 0.1), Math.floor(this.pos[2]));
-    const head = w.getBlock(Math.floor(this.pos[0]), Math.floor(this.pos[1] + P_EYE), Math.floor(this.pos[2]));
+    const head = w.getBlock(Math.floor(this.pos[0]), Math.floor(this.pos[1] + this.eyeHeight), Math.floor(this.pos[2]));
+
+    // Shrinking and growing are eased rather than snapped, so the world swells
+    // and shrinks around you instead of jumping.
+    if (this.scale !== this.targetScale) {
+      this.scale += (this.targetScale - this.scale) * (1 - Math.exp(-9 * dt));
+      if (Math.abs(this.scale - this.targetScale) < 0.004) this.scale = this.targetScale;
+    }
     this.inWater = isWaterBlock(feet);
     this.headInWater = isWaterBlock(head);
     this.inLava = isLavaBlock(feet) || isLavaBlock(head);
@@ -125,6 +212,9 @@ class Player {
     if (input.sneak && !this.flying) speed = 2.0;
     if (this.flying) speed = input.sprint ? 24 : 11;
     else if (this.inWater) speed *= 0.6;
+    // Short legs, but ants are strong: you keep well over your share of the pace.
+    if (this.tiny) speed *= 0.35 + 0.65 * this.scale;
+    else if (this.big) speed *= 1.35;            // and long ones cover ground
 
     const accel = this.flying ? 9 : (this.onGround ? 16 : 3.2);
     const blend = 1 - Math.exp(-accel * dt);
@@ -261,9 +351,9 @@ class Player {
     }
 
     // cactus spines
-    const hw = P_HALF + 0.06;
+    const hw = this.half + 0.06;
     let onCactus = false;
-    for (let yy = Math.floor(this.pos[1]); yy <= Math.floor(this.pos[1] + P_HEIGHT - 0.001) && !onCactus; yy++)
+    for (let yy = Math.floor(this.pos[1]); yy <= Math.floor(this.pos[1] + this.height - 0.001) && !onCactus; yy++)
       for (let zz = Math.floor(this.pos[2] - hw); zz <= Math.floor(this.pos[2] + hw) && !onCactus; zz++)
         for (let xx = Math.floor(this.pos[0] - hw); xx <= Math.floor(this.pos[0] + hw); xx++)
           if (w.getBlock(xx, yy, zz) === B.CACTUS) { onCactus = true; break; }
@@ -312,12 +402,55 @@ class Player {
     return null;
   }
 
+  // The same walk as raycast(), but over the pixel grid, for when you are small
+  // enough for a pixel to be a block. Reach is 5.5 pixels — the same number of
+  // your own body-lengths that 5.5 blocks is at full size.
+  microRaycast(maxPixels = this.reach) {
+    const o = this.eye, d = this.dir, w = this.world;
+    const ox = o[0] * MICRO, oy = o[1] * MICRO, oz = o[2] * MICRO;
+    let x = Math.floor(ox), y = Math.floor(oy), z = Math.floor(oz);
+    const step = [Math.sign(d[0]), Math.sign(d[1]), Math.sign(d[2])];
+    const tDelta = [Math.abs(1 / d[0]), Math.abs(1 / d[1]), Math.abs(1 / d[2])];
+    const tMax = [
+      step[0] > 0 ? (x + 1 - ox) * tDelta[0] : (ox - x) * tDelta[0],
+      step[1] > 0 ? (y + 1 - oy) * tDelta[1] : (oy - y) * tDelta[1],
+      step[2] > 0 ? (z + 1 - oz) * tDelta[2] : (oz - z) * tDelta[2],
+    ];
+    for (let i = 0; i < 3; i++) if (!isFinite(tDelta[i])) tMax[i] = Infinity;
+    let normal = [0, 0, 0];
+    let t = 0;
+    while (t <= maxPixels) {
+      const id = w.getMicro(x, y, z);
+      if (id && !isLiquid(id)) {
+        return { px: x, py: y, pz: z, id, normal, dist: t / MICRO,
+                 place: [x + normal[0], y + normal[1], z + normal[2]],
+                 whole: w.getBlock(microFloor(x), microFloor(y), microFloor(z)) !== B.MICRO };
+      }
+      if (tMax[0] < tMax[1] && tMax[0] < tMax[2]) {
+        t = tMax[0]; x += step[0]; tMax[0] += tDelta[0]; normal = [-step[0], 0, 0];
+      } else if (tMax[1] < tMax[2]) {
+        t = tMax[1]; y += step[1]; tMax[1] += tDelta[1]; normal = [0, -step[1], 0];
+      } else {
+        t = tMax[2]; z += step[2]; tMax[2] += tDelta[2]; normal = [0, 0, -step[2]];
+      }
+    }
+    return null;
+  }
+
+  // Would a pixel laid here be laid inside us?
+  inPixel(px, py, pz) {
+    const s = 1 / MICRO, p = this.pos, hw = this.half;
+    return (p[0] + hw > px * s && p[0] - hw < (px + 1) * s &&
+            p[1] + this.height > py * s && p[1] < (py + 1) * s &&
+            p[2] + hw > pz * s && p[2] - hw < (pz + 1) * s);
+  }
+
   // Standing in the same cell as a ladder is what counts as being on it.
   onLadder() {
     const w = this.world;
-    for (let yy = Math.floor(this.pos[1]); yy <= Math.floor(this.pos[1] + P_HEIGHT - 0.001); yy++) {
-      for (let zz = Math.floor(this.pos[2] - P_HALF); zz <= Math.floor(this.pos[2] + P_HALF); zz++) {
-        for (let xx = Math.floor(this.pos[0] - P_HALF); xx <= Math.floor(this.pos[0] + P_HALF); xx++) {
+    for (let yy = Math.floor(this.pos[1]); yy <= Math.floor(this.pos[1] + this.height - 0.001); yy++) {
+      for (let zz = Math.floor(this.pos[2] - this.half); zz <= Math.floor(this.pos[2] + this.half); zz++) {
+        for (let xx = Math.floor(this.pos[0] - this.half); xx <= Math.floor(this.pos[0] + this.half); xx++) {
           if (BLOCKS[w.getBlock(xx, yy, zz)].ladder) return true;
         }
       }
@@ -328,17 +461,23 @@ class Player {
   // Is anything solid directly under the player's feet?
   overSolidGround() {
     const y = Math.floor(this.pos[1] - 0.02);
-    for (let zz = Math.floor(this.pos[2] - P_HALF); zz <= Math.floor(this.pos[2] + P_HALF); zz++)
-      for (let xx = Math.floor(this.pos[0] - P_HALF); xx <= Math.floor(this.pos[0] + P_HALF); xx++)
-        if (isSolid(this.world.getBlock(xx, y, zz))) return true;
+    for (let zz = Math.floor(this.pos[2] - this.half); zz <= Math.floor(this.pos[2] + this.half); zz++)
+      for (let xx = Math.floor(this.pos[0] - this.half); xx <= Math.floor(this.pos[0] + this.half); xx++) {
+        const id = this.world.getBlock(xx, y, zz);
+        if (BLOCKS[id].micro) {
+          if (this.tiny && this.microHits(xx, y, zz, this.pos[0] - this.half, y, this.pos[2] - this.half,
+                                          this.pos[0] + this.half, y + 1, this.pos[2] + this.half)) return true;
+        } else if (isSolid(id)) return true;
+      }
     return false;
   }
 
   // Would placing a block here trap the player inside it?
   intersectsBlock(bx, by, bz) {
     const p = this.pos;
-    return (p[0] + P_HALF > bx && p[0] - P_HALF < bx + 1 &&
-            p[1] + P_HEIGHT > by && p[1] < by + 1 &&
-            p[2] + P_HALF > bz && p[2] - P_HALF < bz + 1);
+    const hw = this.half;
+    return (p[0] + hw > bx && p[0] - hw < bx + 1 &&
+            p[1] + this.height > by && p[1] < by + 1 &&
+            p[2] + hw > bz && p[2] - hw < bz + 1);
   }
 }

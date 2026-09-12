@@ -86,7 +86,8 @@ precision highp float;
 layout(location=0) in vec3 aPos;
 uniform mat4 uViewProj;
 uniform vec3 uOffset;
-void main() { gl_Position = uViewProj * vec4(aPos * 1.002 - 0.001 + uOffset, 1.0); }`;
+uniform float uScale;
+void main() { gl_Position = uViewProj * vec4((aPos * 1.002 - 0.001) * uScale + uOffset, 1.0); }`;
 
 const LINE_FS = `#version 300 es
 precision highp float;
@@ -128,7 +129,7 @@ class Renderer {
     this.handProg = this.program(HAND_VS, HAND_FS);
     this.uChunk = this.uniforms(this.chunkProg, ['uViewProj','uOffset','uDay','uTex','uFogColor','uFogRange','uCam','uAlpha','uUVScroll','uAlphaTest','uAmbient']);
     this.uSky = this.uniforms(this.skyProg, ['uInvVP','uCam','uSun','uZenith','uHorizon','uStars']);
-    this.uLine = this.uniforms(this.lineProg, ['uViewProj','uOffset','uColor']);
+    this.uLine = this.uniforms(this.lineProg, ['uViewProj','uOffset','uColor','uScale']);
     this.uHand = this.uniforms(this.handProg, ['uMVP','uTex','uDay']);
     this.emptyVAO = gl.createVertexArray();
     this.buildTexture();
@@ -515,7 +516,7 @@ class Renderer {
   render(scene) {
     const gl = this.gl;
     const aspect = this.resize();
-    M4.perspective(this.proj, scene.fov * Math.PI / 180, aspect, 0.06, 1200);
+    M4.perspective(this.proj, scene.fov * Math.PI / 180, aspect, scene.near || 0.06, 1200);
     M4.lookAt(this.view, scene.eye, scene.dir, [0, 1, 0]);
     M4.multiply(this.viewProj, this.proj, this.view);
     M4.invert(this.invVP, this.viewProj);
@@ -588,6 +589,7 @@ class Renderer {
       gl.useProgram(this.lineProg);
       gl.uniformMatrix4fv(this.uLine.uViewProj, false, this.viewProj);
       gl.uniform3fv(this.uLine.uOffset, scene.highlight);
+      gl.uniform1f(this.uLine.uScale, scene.highlightScale || 1);
       gl.uniform4f(this.uLine.uColor, 0.05, 0.05, 0.07, 0.85);
       gl.bindVertexArray(this.lineVAO);
       gl.drawArrays(gl.LINES, 0, 24);
@@ -600,6 +602,7 @@ class Renderer {
       gl.useProgram(this.lineProg);
       gl.uniformMatrix4fv(this.uLine.uViewProj, false, this.viewProj);
       gl.uniform3fv(this.uLine.uOffset, scene.ghost);
+      gl.uniform1f(this.uLine.uScale, 1);
       gl.uniform4f(this.uLine.uColor, 0.95, 0.99, 1.0, 0.9);
       gl.bindVertexArray(this.lineVAO);
       gl.drawArrays(gl.LINES, 0, 24);

@@ -1534,7 +1534,19 @@ function buildBlocks() {
       { solid: false, opaque: false, liquid: true, level, fluid: 'lava', flowing: true, light: 15 }));
   }
 
+  // One cell of pixel blocks. The cell itself is a shell: what is actually in it
+  // lives in world.micro, eight pixels to a side. Not solid, because only
+  // something ant-sized is small enough to be stopped by a pixel.
+  B.MICRO = defBlock('Pixel Blocks', 'stone',
+    { solid: false, opaque: false, micro: true, hardness: 0.2 });
 }
+
+// The pixel grid: eight to a block, which is also how far the Ant-Man suit
+// shrinks you — so a pixel block is to an ant exactly what a block is to you.
+const MICRO = 8;
+const MICRO_VOL = MICRO * MICRO * MICRO;
+const midx = (x, y, z) => x + z * MICRO + y * MICRO * MICRO;
+const microFloor = v => Math.floor(v / MICRO);
 
 // Does this block, sitting in cell (cx,cy,cz), get in the way of that box?
 // Full cubes always do; the ones made of sub-boxes are asked properly.

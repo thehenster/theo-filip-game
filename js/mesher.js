@@ -52,6 +52,74 @@ function liquidSurface(world, id, x, y, z) {
   return (8 - (BLOCKS[id].level || 0)) / 9;
 }
 
+// One cell of pixel blocks: up to 512 little cubes, each drawn with the whole
+// texture of its own block so it reads as a miniature of it rather than as a
+// crop. Faces buried against another pixel — or against the solid block next
+// door — are dropped, so a filled cell costs about what one block costs.
+function meshMicro(world, buf, x, y, z, wx, wz) {
+  const cell = world.micro.get(wx + ',' + y + ',' + wz);
+  if (!cell) return;
+  const s = 1 / MICRO;
+  const l = world.getLight(wx, y, wz);
+  const sky = (l >> 4) / 15, blk = (l & 15) / 15;
+
+  // Resolve the six neighbouring cells once rather than per face: either the
+  // pixels next door, or the single block that fills that whole side.
+  const nCell = [], nSolid = [];
+  for (let d = 0; d < 6; d++) {
+    const f = FACES[d];
+    const ax = wx + f.n[0], ay = y + f.n[1], az = wz + f.n[2];
+    const id = world.getBlockOrSolid(ax, ay, az);
+    nCell[d] = id === B.MICRO ? (world.micro.get(ax + ',' + ay + ',' + az) || null) : null;
+    nSolid[d] = id !== B.MICRO && BLOCKS[id].opaque;
+  }
+
+  for (let j = 0; j < MICRO; j++)
+    for (let k = 0; k < MICRO; k++)
+      for (let i = 0; i < MICRO; i++) {
+        const id = cell[midx(i, j, k)];
+        if (!id) continue;
+        const layers = BLOCKS[id].faces;
+        for (let d = 0; d < 6; d++) {
+          const f = FACES[d];
+          const ni = i + f.n[0], nj = j + f.n[1], nk = k + f.n[2];
+          if (ni >= 0 && ni < MICRO && nj >= 0 && nj < MICRO && nk >= 0 && nk < MICRO) {
+            const nid = cell[midx(ni, nj, nk)];
+            if (nid && BLOCKS[nid].opaque) continue;      // buried inside this cell
+          } else if (nSolid[d]) {
+            continue;                                      // flush against a whole block
+          } else if (nCell[d]) {
+            // the pixel directly opposite, on the far face of the cell next door
+            const nid = nCell[d][midx((ni + MICRO) & (MICRO - 1), (nj + MICRO) & (MICRO - 1), (nk + MICRO) & (MICRO - 1))];
+            if (nid && BLOCKS[nid].opaque) continue;
+          }
+
+          const base = buf.verts;
+          buf.need(4 * FLOATS_PER_VERT);
+          const D = buf.data;
+          let p = buf.len;
+          for (let vi = 0; vi < 4; vi++) {
+            const c = f.v[vi];
+            D[p++] = x + (i + c[0]) * s;
+            D[p++] = y + (j + c[1]) * s;
+            D[p++] = z + (k + c[2]) * s;
+            D[p++] = FACE_UV[vi][0]; D[p++] = FACE_UV[vi][1];
+            D[p++] = layers[d];
+            D[p++] = f.shade;
+            D[p++] = sky; D[p++] = blk;
+          }
+          buf.len = p;
+          buf.verts += 4;
+          buf.needIdx(6);
+          const I = buf.idx;
+          let q = buf.ilen;
+          I[q++] = base; I[q++] = base + 1; I[q++] = base + 2;
+          I[q++] = base; I[q++] = base + 2; I[q++] = base + 3;
+          buf.ilen = q;
+        }
+      }
+}
+
 function meshChunk(world, chunk) {
   const solid = new VertBuffer(), fluid = new VertBuffer();
   const bx = chunk.cx * CX, bz = chunk.cz * CZ;
@@ -64,6 +132,7 @@ function meshChunk(world, chunk) {
         if (!id) continue;
         const def = BLOCKS[id];
         const wx = bx + x, wz = bz + z;
+        if (def.micro) { meshMicro(world, solid, x, y, z, wx, wz); continue; }
         const buf = def.translucent ? fluid : solid;
         // A liquid's surface sits at its level, unless more liquid covers it.
         const topY = def.liquid ? liquidSurface(world, id, wx, y, wz) : 1;

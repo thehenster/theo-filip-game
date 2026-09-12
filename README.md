@@ -1,4 +1,4 @@
-# Voxelcraft
+# This is Voxelcraft!
 
 A Minecraft-style voxel game written from scratch — no engine, no libraries, no build step.
 Plain WebGL2 and about 4,000 lines of JavaScript.

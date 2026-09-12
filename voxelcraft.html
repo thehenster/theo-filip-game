@@ -2393,7 +2393,19 @@ function buildBlocks() {
       { solid: false, opaque: false, liquid: true, level, fluid: 'lava', flowing: true, light: 15 }));
   }
 
+  // One cell of pixel blocks. The cell itself is a shell: what is actually in it
+  // lives in world.micro, eight pixels to a side. Not solid, because only
+  // something ant-sized is small enough to be stopped by a pixel.
+  B.MICRO = defBlock('Pixel Blocks', 'stone',
+    { solid: false, opaque: false, micro: true, hardness: 0.2 });
 }
+
+// The pixel grid: eight to a block, which is also how far the Ant-Man suit
+// shrinks you — so a pixel block is to an ant exactly what a block is to you.
+const MICRO = 8;
+const MICRO_VOL = MICRO * MICRO * MICRO;
+const midx = (x, y, z) => x + z * MICRO + y * MICRO * MICRO;
+const microFloor = v => Math.floor(v / MICRO);
 
 // Does this block, sitting in cell (cx,cy,cz), get in the way of that box?
 // Full cubes always do; the ones made of sub-boxes are asked properly.
@@ -3531,6 +3543,7 @@ class World {
     this.villages = new Map();
     this.strongholds = new Map();
     this.chests = new Map();      // "x,y,z" -> [[id, count], ...]        // cached column data, cleared between chunk builds
+    this.micro = new Map();       // "x,y,z" -> Uint8Array(512), the pixel blocks in that cell
     this.darkstones = new Map();  // "x,y,z" -> [x,y,z] for every darkstone placed
     this.shroud = new Set();      // "x,y,z" of every cell those darkstones hold in the dark
   }
@@ -3546,6 +3559,93 @@ class World {
     if (!c) return 0;
     return c.blocks[idx(x & 15, y, z & 15)];
   }
+  // ---- pixel blocks ----------------------------------------------------
+  // Everything below works in pixel coordinates: whole-block coordinates times
+  // MICRO. A cell of a whole block reads as that block all the way through, so
+  // one walk over the pixel grid sees the ordinary world and the pixel world at
+  // once.
+  getMicro(px, py, pz) {
+    const bx = microFloor(px), by = microFloor(py), bz = microFloor(pz);
+    const host = this.getBlock(bx, by, bz);
+    if (host !== B.MICRO) return host;
+    const cell = this.micro.get(bx + ',' + by + ',' + bz);
+    if (!cell) return 0;
+    return cell[midx(px - bx * MICRO, py - by * MICRO, pz - bz * MICRO)];
+  }
+
+  // Break a whole block up into the pixels it is made of, so it can be carved.
+  // Air opens as an empty cell; anything shaped, liquid or indestructible says no.
+  openMicro(bx, by, bz) {
+    const key = bx + ',' + by + ',' + bz;
+    const existing = this.micro.get(key);
+    if (existing) return existing;
+    const host = this.getBlock(bx, by, bz);
+    if (host !== 0) {
+      const def = BLOCKS[host];
+      if (!def.solid || def.liquid || def.boxes || host === B.BEDROCK) return null;
+    }
+    const cell = new Uint8Array(MICRO_VOL);
+    if (host !== 0) cell.fill(host);
+    this.micro.set(key, cell);
+    if (!this.setBlock(bx, by, bz, B.MICRO)) { this.micro.delete(key); return null; }
+    return cell;
+  }
+
+  setMicro(px, py, pz, id) {
+    const bx = microFloor(px), by = microFloor(py), bz = microFloor(pz);
+    if (by < 0 || by >= CY) return false;
+    const cell = this.openMicro(bx, by, bz);
+    if (!cell) return false;
+    const i = midx(px - bx * MICRO, py - by * MICRO, pz - bz * MICRO);
+    if (cell[i] === id) return false;
+    cell[i] = id;
+    if (cell.some(v => v)) {
+      this.touchMicro(bx, by, bz);
+    } else {
+      // the last pixel went: the cell is plain air again
+      this.micro.delete(bx + ',' + by + ',' + bz);
+      this.setBlock(bx, by, bz, 0);
+    }
+    return true;
+  }
+
+  // Changing pixels inside a cell does not go through setBlock, so the chunk it
+  // sits in — and any neighbour whose own faces it could uncover — is remeshed here.
+  touchMicro(bx, by, bz) {
+    for (let dx = -1; dx <= 1; dx++)
+      for (let dz = -1; dz <= 1; dz++) {
+        const c = this.getChunk((bx + dx) >> 4, (bz + dz) >> 4);
+        if (c) c.dirty = true;
+      }
+    this.markDirty(bx, bz);
+  }
+
+  // Pixel cells, run-length encoded, so a solid cell costs two numbers.
+  serializeMicro(limit = 4000) {
+    const out = [];
+    for (const [key, cell] of this.micro) {
+      if (out.length >= limit) break;
+      const rle = [];
+      let run = 1;
+      for (let i = 1; i <= MICRO_VOL; i++) {
+        if (i < MICRO_VOL && cell[i] === cell[i - 1]) { run++; continue; }
+        rle.push(run, cell[i - 1]);
+        run = 1;
+      }
+      out.push([key, rle]);
+    }
+    return out;
+  }
+  loadMicro(list) {
+    for (const [key, rle] of list || []) {
+      const cell = new Uint8Array(MICRO_VOL);
+      let p = 0;
+      for (let i = 0; i < rle.length && p < MICRO_VOL; i += 2)
+        for (let k = 0; k < rle[i] && p < MICRO_VOL; k++) cell[p++] = rle[i + 1];
+      this.micro.set(key, cell);
+    }
+  }
+
   // Treats not-yet-loaded chunks as solid so we never mesh a hole into the world.
   getBlockOrSolid(x, y, z) {
     if (y < 0) return B.BEDROCK;
@@ -4546,6 +4646,8 @@ class World {
     c.blocks[i] = id;
     if (id) c.empty = false;
     if (record) this.edits.set(x + ',' + y + ',' + z, id);
+    // whatever a cell becomes, if it is no longer pixels its pixels are gone
+    if (old === B.MICRO && id !== B.MICRO) this.micro.delete(x + ',' + y + ',' + z);
 
     const col = (z & 15) * CX + (x & 15);
     if (BLOCKS[id].opaque) { if (y > c.hmap[col]) c.hmap[col] = y; }
@@ -4662,6 +4764,74 @@ function liquidSurface(world, id, x, y, z) {
   return (8 - (BLOCKS[id].level || 0)) / 9;
 }
 
+// One cell of pixel blocks: up to 512 little cubes, each drawn with the whole
+// texture of its own block so it reads as a miniature of it rather than as a
+// crop. Faces buried against another pixel — or against the solid block next
+// door — are dropped, so a filled cell costs about what one block costs.
+function meshMicro(world, buf, x, y, z, wx, wz) {
+  const cell = world.micro.get(wx + ',' + y + ',' + wz);
+  if (!cell) return;
+  const s = 1 / MICRO;
+  const l = world.getLight(wx, y, wz);
+  const sky = (l >> 4) / 15, blk = (l & 15) / 15;
+
+  // Resolve the six neighbouring cells once rather than per face: either the
+  // pixels next door, or the single block that fills that whole side.
+  const nCell = [], nSolid = [];
+  for (let d = 0; d < 6; d++) {
+    const f = FACES[d];
+    const ax = wx + f.n[0], ay = y + f.n[1], az = wz + f.n[2];
+    const id = world.getBlockOrSolid(ax, ay, az);
+    nCell[d] = id === B.MICRO ? (world.micro.get(ax + ',' + ay + ',' + az) || null) : null;
+    nSolid[d] = id !== B.MICRO && BLOCKS[id].opaque;
+  }
+
+  for (let j = 0; j < MICRO; j++)
+    for (let k = 0; k < MICRO; k++)
+      for (let i = 0; i < MICRO; i++) {
+        const id = cell[midx(i, j, k)];
+        if (!id) continue;
+        const layers = BLOCKS[id].faces;
+        for (let d = 0; d < 6; d++) {
+          const f = FACES[d];
+          const ni = i + f.n[0], nj = j + f.n[1], nk = k + f.n[2];
+          if (ni >= 0 && ni < MICRO && nj >= 0 && nj < MICRO && nk >= 0 && nk < MICRO) {
+            const nid = cell[midx(ni, nj, nk)];
+            if (nid && BLOCKS[nid].opaque) continue;      // buried inside this cell
+          } else if (nSolid[d]) {
+            continue;                                      // flush against a whole block
+          } else if (nCell[d]) {
+            // the pixel directly opposite, on the far face of the cell next door
+            const nid = nCell[d][midx((ni + MICRO) & (MICRO - 1), (nj + MICRO) & (MICRO - 1), (nk + MICRO) & (MICRO - 1))];
+            if (nid && BLOCKS[nid].opaque) continue;
+          }
+
+          const base = buf.verts;
+          buf.need(4 * FLOATS_PER_VERT);
+          const D = buf.data;
+          let p = buf.len;
+          for (let vi = 0; vi < 4; vi++) {
+            const c = f.v[vi];
+            D[p++] = x + (i + c[0]) * s;
+            D[p++] = y + (j + c[1]) * s;
+            D[p++] = z + (k + c[2]) * s;
+            D[p++] = FACE_UV[vi][0]; D[p++] = FACE_UV[vi][1];
+            D[p++] = layers[d];
+            D[p++] = f.shade;
+            D[p++] = sky; D[p++] = blk;
+          }
+          buf.len = p;
+          buf.verts += 4;
+          buf.needIdx(6);
+          const I = buf.idx;
+          let q = buf.ilen;
+          I[q++] = base; I[q++] = base + 1; I[q++] = base + 2;
+          I[q++] = base; I[q++] = base + 2; I[q++] = base + 3;
+          buf.ilen = q;
+        }
+      }
+}
+
 function meshChunk(world, chunk) {
   const solid = new VertBuffer(), fluid = new VertBuffer();
   const bx = chunk.cx * CX, bz = chunk.cz * CZ;
@@ -4674,6 +4844,7 @@ function meshChunk(world, chunk) {
         if (!id) continue;
         const def = BLOCKS[id];
         const wx = bx + x, wz = bz + z;
+        if (def.micro) { meshMicro(world, solid, x, y, z, wx, wz); continue; }
         const buf = def.translucent ? fluid : solid;
         // A liquid's surface sits at its level, unless more liquid covers it.
         const topY = def.liquid ? liquidSurface(world, id, wx, y, wz) : 1;
@@ -7815,6 +7986,9 @@ const BedWars = {
         const nx = Math.floor(mob.x + Math.sin(mob.yaw) * ahead);
         const nz = Math.floor(mob.z - Math.cos(mob.yaw) * ahead);
         if (isSolid(world.getBlock(nx, fy, nz))) continue;
+        // Never lay a block into someone: bridging up under your feet used to
+        // shove you out of the way, which is not a thing a player could do to you.
+        if (player && player.intersectsBlock(nx, fy, nz)) continue;
         world.setBlock(nx, fy, nz, team.wool);
         this.notePlaced(nx, fy, nz);
         mob.bwBlocks--;
@@ -7859,15 +8033,16 @@ const BedWars = {
       } else mob.bwBreakTimer = 0;
     } else {
       mob.bwBreakTimer = 0;
-      if (target && target.kind === 'foe' && dist < 2.4 && mob.attackCd <= 0) {
+      const reachesYou = target && !target.mob ? Math.abs(player.pos[1] - mob.y) < 2.3 : true;
+      if (target && target.kind === 'foe' && dist < 2.4 && reachesYou && mob.attackCd <= 0) {
         mob.attackCd = 0.7 + Math.random() * 0.7;
         mob.swing = 1;
         this.botStrike(mob, team, target, player);
       }
     }
 
-    // They never come looking for you — you are not on the list of things worth
-    // walking towards — but get inside arm's reach of one and it will swing.
+    // Even one that is busy with something else will swing if you walk into
+    // arm's reach of it.
     if (team !== this.you && !player.dead && mob.attackCd <= 0) {
       const pdx = player.pos[0] - mob.x, pdz = player.pos[2] - mob.z;
       if (Math.hypot(pdx, pdz) < 2.3 && Math.abs(player.pos[1] - mob.y) < 2.3) {
@@ -7978,7 +8153,12 @@ const BedWars = {
       const push = 4 / Math.max(0.7, Math.hypot(dx, dz));
       foe.vx += dx * push; foe.vz += dz * push; foe.vy = 3;
       if (foe.hp <= 0) this.botDied(foe, team.name);
+      return;
     }
+    // A foe with no mob on it is you. Without this the chase ended in a swing
+    // that made a noise and nothing else — and the cooldown it set then kept the
+    // opportunistic swing below from ever landing either.
+    if (team !== this.you && player && !player.dead) this.strikePlayer(mob, team, player);
   },
 
   botDied(mob, by) {
@@ -8834,8 +9014,27 @@ function defineTributes() {
 // ===== js/outfits.js =====
 // The dressing room. What you are wearing decides what you can do: one outfit at
 // a time, one power, on its own cooldown. Pressing G is the whole interface.
+// The suit takes you down to one pixel block in eight — the same grid the world
+// can be carved on — so a pixel block is to you then exactly what a block is to
+// you now. You end up a shade over a fifth of a block tall.
+const ANT_SCALE = 1 / MICRO;
+
+// How far the Steel Cape's heat vision reaches, and how much of it it takes out.
+const HEAT_RANGE = 26, HEAT_BLOCKS = 8;
+
+// The other way off your own size: three and a half blocks of temper. Chosen so
+// that STEP_UP scales past a whole block (0.55 x 1.9 = 1.045) — a full block
+// becomes a kerb he strides over rather than a step he has to jump.
+const HULK_SCALE = 1.9;
+const HEROBRINE_RANGE = 18;      // how far his attention carries
+
+// The outfits that change your size, and what they change it to, so that taking
+// one off — or putting a different one on — always puts you back in your own body.
+const SIZED = { antman: ANT_SCALE, hulk: HULK_SCALE };
+
 const Outfits = {
   worn: 'none',
+  awakened: false,             // whether the Noob has found out who he is
   cooldown: 0,
   ready: 0,                    // brief flash when a power comes back
 
@@ -8918,7 +9117,7 @@ const Outfits = {
           if (id && BLOCKS[id].solid && !BLOCKS[id].plant) anchor = [x + 0.5, y + 0.5, z + 0.5];
         }
         if (!anchor) return 'Nothing in range to web onto';
-        const dx = anchor[0] - p.pos[0], dy = anchor[1] - (p.pos[1] + P_EYE), dz = anchor[2] - p.pos[2];
+        const dx = anchor[0] - p.pos[0], dy = anchor[1] - (p.pos[1] + p.eyeHeight), dz = anchor[2] - p.pos[2];
         const len = Math.max(1, Math.hypot(dx, dy, dz));
         const pull = Math.min(30, 9 + len * 0.9);
         p.vel[0] = dx / len * pull;
@@ -8928,6 +9127,110 @@ const Outfits = {
         p.fallFrom = null;
         p.noFall = true;
         Sound.burst({ dur: 0.22, freq: 1500, gain: 0.28, sweep: 2.6 });
+        return true;
+      },
+    },
+    {
+      // Small enough to walk under a slab and through the gap beside a door.
+      // Nothing that size has ever been hurt by a long drop, either.
+      key: 'antman', name: 'Ant-Man Suit', icon: () => B.REDSTONE_BLOCK, cd: 1.5,
+      blurb: 'Shrink to the size of an ant. Down there every block is a cliff made of 512 pixel blocks, and you can break and lay them one at a time. No fall can hurt you. Press G again to grow back.',
+      use(game) {
+        const p = game.player;
+        if (p.targetScale !== 1) {
+          if (!p.resize(1)) return 'Not enough room to grow back here';
+          Sound.burst({ dur: 0.45, freq: 220, gain: 0.32, sweep: 3.2 });
+          game.toast('Back to full size');
+          return true;
+        }
+        p.resize(ANT_SCALE);                 // shrinking always fits
+        Sound.burst({ dur: 0.45, freq: 1600, gain: 0.3, sweep: 0.3 });
+        game.toast('Ant-sized');
+        return true;
+      },
+    },
+    {
+      // The other end of the scale from the ant, and the same machinery: he is
+      // simply a much larger body, with the reach and the temper to match.
+      key: 'hulk', name: 'Hulk Suit', icon: () => B.GREEN_WOOL, cd: 2,
+      blurb: 'Press G to hulk out: three and a half blocks of muscle. You stride straight over a full block instead of jumping it, you move half again as fast, and every swing smashes a three by three to dust \u2014 instantly, in any mode, with nothing left to pick up. You need four blocks of headroom. Press G again to calm down.',
+      use(game) {
+        const p = game.player;
+        if (p.targetScale !== 1) {
+          if (!p.resize(1)) return 'No room to calm down here';
+          Sound.burst({ dur: 0.5, freq: 900, gain: 0.26, sweep: 0.4 });
+          game.toast('Calm again');
+          return true;
+        }
+        if (!p.resize(HULK_SCALE)) return 'Not enough headroom to hulk out';
+        Sound.burst({ dur: 0.7, freq: 120, gain: 0.4, sweep: 0.5 });
+        Deep.stir(game, 30);                       // everything hears that
+        game.toast('HULK');
+        return true;
+      },
+    },
+    {
+      // Starts as the worst skin in the game and ends as the one the stories are
+      // about. The first press is the whole point of it.
+      key: 'noob',
+      get name() { return Outfits.awakened ? 'Herobrine' : 'Noob'; },
+      icon: () => Outfits.awakened ? B.GLOWSTONE : B.DIRT,
+      get cd() { return Outfits.awakened ? 20 : 0; },
+      get blurb() {
+        return Outfits.awakened
+          ? 'He is awake. Press G and night falls, and everything hostile within eighteen blocks is struck down where it stands.'
+          : 'Plain dirt-coloured nobody, no powers at all. Press G anyway and see who is wearing it.';
+      },
+      use(game) {
+        if (!Outfits.awakened) {
+          Outfits.awakened = true;
+          game.time = 0.78;                        // the sun goes down on the spot
+          Sound.burst({ dur: 1.2, freq: 70, gain: 0.42, sweep: 0.35 });
+          Deep.stir(game, 40);
+          Outfits.buildCards(game);                // the card is a different skin now
+          game.toast('Herobrine woke up');
+          return true;
+        }
+        const p = game.player;
+        game.time = 0.78;
+        let struck = 0;
+        for (const mob of Animals.list.slice()) {
+          if (!mob.def.hostile) continue;          // he has no quarrel with the cows
+          const d = Math.hypot(mob.x - p.pos[0], mob.y - p.pos[1], mob.z - p.pos[2]);
+          if (d > HEROBRINE_RANGE) continue;
+          const away = [(mob.x - p.pos[0]) / (d || 1), 0, (mob.z - p.pos[2]) / (d || 1)];
+          if (Animals.punch(mob, away, 1000, game.world).killed) struck++;
+        }
+        Sound.burst({ dur: 0.8, freq: 160, gain: 0.4, sweep: 0.3 });
+        Deep.stir(game, 40);
+        game.toast(struck ? 'Struck down ' + struck + (struck === 1 ? ' thing' : ' things') : 'Nothing out there to strike');
+        return true;
+      },
+    },
+    {
+      // The one with the cape: it flies, and it looks straight through stone.
+      // Between them there is nowhere left you cannot get to.
+      key: 'hero', name: 'Steel Cape', icon: () => B.BLUE_WOOL, cd: 8,
+      blurb: 'Fly in any mode \u2014 press F, then jump to rise and Shift to drop. Press G for heat vision, which melts a tunnel straight through whatever you are looking at. Never takes fall damage.',
+      use(game) {
+        const p = game.player, d = p.dir, o = p.eye, w = game.world;
+        let bored = 0, last = '';
+        for (let t = 0.5; t <= HEAT_RANGE && bored < HEAT_BLOCKS; t += 0.25) {
+          const x = Math.floor(o[0] + d[0] * t), y = Math.floor(o[1] + d[1] * t), z = Math.floor(o[2] + d[2] * t);
+          const at = x + ',' + y + ',' + z;
+          if (at === last) continue;                 // the ray is finer than the grid
+          last = at;
+          if (y < 0 || y >= CY) break;
+          const id = w.getBlock(x, y, z);
+          if (!id || isLiquid(id)) continue;         // the beam goes through air and water
+          if (id === B.BEDROCK) break;
+          if (BedWars.active && !BedWars.canBreak(x, y, z, id)) break;
+          if (w.setBlock(x, y, z, 0)) { BedWars.placed.delete(BedWars.key(x, y, z)); bored++; }
+        }
+        if (!bored) return 'Nothing in the way';
+        Sound.burst({ dur: 0.5, freq: 2000, gain: 0.3, sweep: 0.25 });
+        Deep.stir(game, 20);                         // it is not a quiet way in
+        game.toast('Heat vision \u00b7 ' + bored + (bored === 1 ? ' block' : ' blocks') + ' melted');
         return true;
       },
     },
@@ -8954,11 +9257,28 @@ const Outfits = {
   ],
 
   byKey(key) { return this.list.find(o => o.key === key) || this.list[0]; },
+  // Only the cape lets you off the ground where the rules otherwise would not.
+  caped() { return this.worn === 'hero'; },
+  // Hulked out: a fist that takes a three by three, and no interest in hardness.
+  smashing() { return this.worn === 'hulk' && this.big; },
+  get big() { return typeof Game !== 'undefined' && Game.player && Game.player.big; },
   current() { return this.byKey(this.worn); },
 
   wear(key, game) {
+    const next = this.byKey(key).key;
+    // You leave the dressing room in your own body, unless the outfit you are
+    // putting on is the very one that changed it.
+    if (game && game.player && game.player.targetScale !== 1 && SIZED[next] !== game.player.targetScale) {
+      if (!game.player.resize(1)) { game.toast('Get back to your own size first'); return; }
+    }
+    if (next !== 'noob') this.awakened = false;      // he goes back to sleep
+    const wasCaped = this.caped();
     this.worn = this.byKey(key).key;
     this.cooldown = 0;
+    // hang the cape up and you come down, unless the mode would have let you fly
+    if (wasCaped && !this.caped() && game && game.survivalRules() && game.player) {
+      game.player.flying = false;
+    }
     Settings.set('outfit', this.worn);
     this.buildCards(game);
     this.refreshHud();
@@ -8978,8 +9298,12 @@ const Outfits = {
   // Worn effects that are not a button press: the suit lets you hold onto a wall
   // the way a ladder does, and takes the sting out of every landing.
   tick(game) {
-    if (this.worn !== 'spider') return;
     const p = game.player;
+    // Square-cube law: an ant can be dropped off anything and walk away.
+    if (p.tiny) p.noFall = true;
+    if (this.worn === 'hero') { p.noFall = true; return; }   // it flies; it does not fall
+    if (this.worn === 'hulk' && p.big) { p.noFall = true; return; }  // he lands in a crater, unhurt
+    if (this.worn !== 'spider') return;
     p.noFall = true;
     if (p.flying || p.onGround) return;
     // pressed against something solid, and holding forward: climb it
@@ -10651,7 +10975,8 @@ precision highp float;
 layout(location=0) in vec3 aPos;
 uniform mat4 uViewProj;
 uniform vec3 uOffset;
-void main() { gl_Position = uViewProj * vec4(aPos * 1.002 - 0.001 + uOffset, 1.0); }`;
+uniform float uScale;
+void main() { gl_Position = uViewProj * vec4((aPos * 1.002 - 0.001) * uScale + uOffset, 1.0); }`;
 
 const LINE_FS = `#version 300 es
 precision highp float;
@@ -10693,7 +11018,7 @@ class Renderer {
     this.handProg = this.program(HAND_VS, HAND_FS);
     this.uChunk = this.uniforms(this.chunkProg, ['uViewProj','uOffset','uDay','uTex','uFogColor','uFogRange','uCam','uAlpha','uUVScroll','uAlphaTest','uAmbient']);
     this.uSky = this.uniforms(this.skyProg, ['uInvVP','uCam','uSun','uZenith','uHorizon','uStars']);
-    this.uLine = this.uniforms(this.lineProg, ['uViewProj','uOffset','uColor']);
+    this.uLine = this.uniforms(this.lineProg, ['uViewProj','uOffset','uColor','uScale']);
     this.uHand = this.uniforms(this.handProg, ['uMVP','uTex','uDay']);
     this.emptyVAO = gl.createVertexArray();
     this.buildTexture();
@@ -11080,7 +11405,7 @@ class Renderer {
   render(scene) {
     const gl = this.gl;
     const aspect = this.resize();
-    M4.perspective(this.proj, scene.fov * Math.PI / 180, aspect, 0.06, 1200);
+    M4.perspective(this.proj, scene.fov * Math.PI / 180, aspect, scene.near || 0.06, 1200);
     M4.lookAt(this.view, scene.eye, scene.dir, [0, 1, 0]);
     M4.multiply(this.viewProj, this.proj, this.view);
     M4.invert(this.invVP, this.viewProj);
@@ -11153,6 +11478,7 @@ class Renderer {
       gl.useProgram(this.lineProg);
       gl.uniformMatrix4fv(this.uLine.uViewProj, false, this.viewProj);
       gl.uniform3fv(this.uLine.uOffset, scene.highlight);
+      gl.uniform1f(this.uLine.uScale, scene.highlightScale || 1);
       gl.uniform4f(this.uLine.uColor, 0.05, 0.05, 0.07, 0.85);
       gl.bindVertexArray(this.lineVAO);
       gl.drawArrays(gl.LINES, 0, 24);
@@ -11165,6 +11491,7 @@ class Renderer {
       gl.useProgram(this.lineProg);
       gl.uniformMatrix4fv(this.uLine.uViewProj, false, this.viewProj);
       gl.uniform3fv(this.uLine.uOffset, scene.ghost);
+      gl.uniform1f(this.uLine.uScale, 1);
       gl.uniform4f(this.uLine.uColor, 0.95, 0.99, 1.0, 0.9);
       gl.bindVertexArray(this.lineVAO);
       gl.drawArrays(gl.LINES, 0, 24);
@@ -11239,6 +11566,31 @@ class Player {
     this.shield = 0;              // seconds of Warden's Plate left
     this.noFall = false;          // the next landing is free, however far it was
     this.spawn = null;
+    this.scale = 1;              // 1 is your own size; the Ant-Man suit drives it down
+    this.targetScale = 1;
+  }
+
+  // Every size below is derived, so shrinking is a real, smaller body: it
+  // collides, climbs and sees the world from where its own eyes actually are.
+  get half() { return P_HALF * this.scale; }
+  get height() { return P_HEIGHT * this.scale; }
+  get eyeHeight() { return P_EYE * this.scale; }
+  get stepUp() { return STEP_UP * this.scale; }
+  get tiny() { return this.scale < 0.9; }
+  get big() { return this.scale > 1.1; }
+
+  // Is there room here for the body we are about to have?
+  roomAtScale(scale) {
+    const was = this.scale;
+    this.scale = scale;
+    const blocked = this.collides(this.pos[0], this.pos[1], this.pos[2]);
+    this.scale = was;
+    return !blocked;
+  }
+  resize(scale) {
+    if (!this.roomAtScale(scale)) return false;
+    this.targetScale = scale;
+    return true;
   }
 
   // Damage in half-hearts; armour soaks up its share first.
@@ -11261,10 +11613,11 @@ class Player {
     this.food = this.maxFood; this.water = this.maxWater; this.exert = 0;
     this.dead = false; this.invuln = 1; this.fallFrom = null;
     this.vel = [0, 0, 0];
+    this.scale = this.targetScale = 1;
     if (this.spawn) this.pos = this.spawn.slice();
   }
 
-  get eye() { return [this.pos[0], this.pos[1] + P_EYE, this.pos[2]]; }
+  get eye() { return [this.pos[0], this.pos[1] + this.eyeHeight, this.pos[2]]; }
   get dir() {
     const cp = Math.cos(this.pitch);
     return [Math.sin(this.yaw) * cp, Math.sin(this.pitch), -Math.cos(this.yaw) * cp];
@@ -11272,15 +11625,68 @@ class Player {
 
   collides(x, y, z) {
     const w = this.world;
-    const x0 = Math.floor(x - P_HALF), x1 = Math.floor(x + P_HALF);
-    const y0 = Math.floor(y), y1 = Math.floor(y + P_HEIGHT - 0.001);
-    const z0 = Math.floor(z - P_HALF), z1 = Math.floor(z + P_HALF);
+    const hw = this.half, ht = this.height;
+    const x0 = Math.floor(x - hw), x1 = Math.floor(x + hw);
+    const y0 = Math.floor(y), y1 = Math.floor(y + ht - 0.001);
+    const z0 = Math.floor(z - hw), z1 = Math.floor(z + hw);
     for (let yy = y0; yy <= y1; yy++)
       for (let zz = z0; zz <= z1; zz++)
         for (let xx = x0; xx <= x1; xx++) {
           const id = w.getBlock(xx, yy, zz);
-          if (id && blockHits(id, xx, yy, zz, x - P_HALF, y, z - P_HALF, x + P_HALF, y + P_HEIGHT, z + P_HALF)) return true;
+          if (!id) continue;
+          // Pixel blocks only stop something small enough to notice them; at
+          // full size you step straight over a cell of them.
+          if (BLOCKS[id].micro) {
+            if (this.tiny && this.microHits(xx, yy, zz, x - hw, y, z - hw, x + hw, y + ht, z + hw)) return true;
+            continue;
+          }
+          if (blockHits(id, xx, yy, zz, x - hw, y, z - hw, x + hw, y + ht, z + hw)) return true;
         }
+    return false;
+  }
+
+  // Does the box overlap any filled pixel of the cell at (cx,cy,cz)?
+  microHits(cx, cy, cz, x0, y0, z0, x1, y1, z1) {
+    const cell = this.world.micro.get(cx + ',' + cy + ',' + cz);
+    if (!cell) return false;
+    const lo = (v, c) => Math.max(0, Math.floor((v - c) * MICRO));
+    const hi = (v, c) => Math.min(MICRO - 1, Math.ceil((v - c) * MICRO) - 1);
+    const i0 = lo(x0, cx), i1 = hi(x1, cx);
+    const j0 = lo(y0, cy), j1 = hi(y1, cy);
+    const k0 = lo(z0, cz), k1 = hi(z1, cz);
+    for (let j = j0; j <= j1; j++)
+      for (let k = k0; k <= k1; k++)
+        for (let i = i0; i <= i1; i++)
+          if (cell[midx(i, j, k)]) return true;
+    return false;
+  }
+
+  // Chunks load in around you, blocks grow, teleports land you where the ground
+  // turned out to be: any of them can leave you standing inside a block. Once
+  // that happens every axis collides at once, so every move is undone and no
+  // key — not even jump — gets you out again. Lift clear before moving.
+  unstick() {
+    const [x, y, z] = this.pos;
+    if (!this.collides(x, y, z)) return false;
+    for (let dy = 0.05; dy <= 20; dy += 0.05) {
+      if (!this.collides(x, y + dy, z)) {
+        this.pos[1] = y + dy;
+        this.vel[1] = 0;
+        this.fallFrom = null;         // we were put here, we did not fall here
+        return true;
+      }
+    }
+    // Buried: look outwards for daylight instead, nearest ring first.
+    const ring = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
+    for (let r = 1; r <= 4; r++)
+      for (const [dx, dz] of ring)
+        for (let dy = 0; dy <= 4; dy++)
+          if (!this.collides(x + dx * r, y + dy, z + dz * r)) {
+            this.pos = [x + dx * r, y + dy, z + dz * r];
+            this.vel = [0, 0, 0];
+            this.fallFrom = null;
+            return true;
+          }
     return false;
   }
 
@@ -11294,7 +11700,7 @@ class Player {
       // makes a staircase a staircase.
       if (axis !== 1 && !this.flying && this.vel[1] <= 0.01) {
         const wasY = p[1];
-        p[1] += STEP_UP;
+        p[1] += this.stepUp;
         if (!this.collides(p[0], p[1], p[2])) return;
         p[1] = wasY;
       }
@@ -11314,8 +11720,16 @@ class Player {
 
   update(dt, input) {
     const w = this.world;
+    this.unstick();
     const feet = w.getBlock(Math.floor(this.pos[0]), Math.floor(this.pos[1] + 0.1), Math.floor(this.pos[2]));
-    const head = w.getBlock(Math.floor(this.pos[0]), Math.floor(this.pos[1] + P_EYE), Math.floor(this.pos[2]));
+    const head = w.getBlock(Math.floor(this.pos[0]), Math.floor(this.pos[1] + this.eyeHeight), Math.floor(this.pos[2]));
+
+    // Shrinking and growing are eased rather than snapped, so the world swells
+    // and shrinks around you instead of jumping.
+    if (this.scale !== this.targetScale) {
+      this.scale += (this.targetScale - this.scale) * (1 - Math.exp(-9 * dt));
+      if (Math.abs(this.scale - this.targetScale) < 0.004) this.scale = this.targetScale;
+    }
     this.inWater = isWaterBlock(feet);
     this.headInWater = isWaterBlock(head);
     this.inLava = isLavaBlock(feet) || isLavaBlock(head);
@@ -11337,6 +11751,9 @@ class Player {
     if (input.sneak && !this.flying) speed = 2.0;
     if (this.flying) speed = input.sprint ? 24 : 11;
     else if (this.inWater) speed *= 0.6;
+    // Short legs, but ants are strong: you keep well over your share of the pace.
+    if (this.tiny) speed *= 0.35 + 0.65 * this.scale;
+    else if (this.big) speed *= 1.35;            // and long ones cover ground
 
     const accel = this.flying ? 9 : (this.onGround ? 16 : 3.2);
     const blend = 1 - Math.exp(-accel * dt);
@@ -11473,9 +11890,9 @@ class Player {
     }
 
     // cactus spines
-    const hw = P_HALF + 0.06;
+    const hw = this.half + 0.06;
     let onCactus = false;
-    for (let yy = Math.floor(this.pos[1]); yy <= Math.floor(this.pos[1] + P_HEIGHT - 0.001) && !onCactus; yy++)
+    for (let yy = Math.floor(this.pos[1]); yy <= Math.floor(this.pos[1] + this.height - 0.001) && !onCactus; yy++)
       for (let zz = Math.floor(this.pos[2] - hw); zz <= Math.floor(this.pos[2] + hw) && !onCactus; zz++)
         for (let xx = Math.floor(this.pos[0] - hw); xx <= Math.floor(this.pos[0] + hw); xx++)
           if (w.getBlock(xx, yy, zz) === B.CACTUS) { onCactus = true; break; }
@@ -11524,12 +11941,55 @@ class Player {
     return null;
   }
 
+  // The same walk as raycast(), but over the pixel grid, for when you are small
+  // enough for a pixel to be a block. Reach is 5.5 pixels — the same number of
+  // your own body-lengths that 5.5 blocks is at full size.
+  microRaycast(maxPixels = this.reach) {
+    const o = this.eye, d = this.dir, w = this.world;
+    const ox = o[0] * MICRO, oy = o[1] * MICRO, oz = o[2] * MICRO;
+    let x = Math.floor(ox), y = Math.floor(oy), z = Math.floor(oz);
+    const step = [Math.sign(d[0]), Math.sign(d[1]), Math.sign(d[2])];
+    const tDelta = [Math.abs(1 / d[0]), Math.abs(1 / d[1]), Math.abs(1 / d[2])];
+    const tMax = [
+      step[0] > 0 ? (x + 1 - ox) * tDelta[0] : (ox - x) * tDelta[0],
+      step[1] > 0 ? (y + 1 - oy) * tDelta[1] : (oy - y) * tDelta[1],
+      step[2] > 0 ? (z + 1 - oz) * tDelta[2] : (oz - z) * tDelta[2],
+    ];
+    for (let i = 0; i < 3; i++) if (!isFinite(tDelta[i])) tMax[i] = Infinity;
+    let normal = [0, 0, 0];
+    let t = 0;
+    while (t <= maxPixels) {
+      const id = w.getMicro(x, y, z);
+      if (id && !isLiquid(id)) {
+        return { px: x, py: y, pz: z, id, normal, dist: t / MICRO,
+                 place: [x + normal[0], y + normal[1], z + normal[2]],
+                 whole: w.getBlock(microFloor(x), microFloor(y), microFloor(z)) !== B.MICRO };
+      }
+      if (tMax[0] < tMax[1] && tMax[0] < tMax[2]) {
+        t = tMax[0]; x += step[0]; tMax[0] += tDelta[0]; normal = [-step[0], 0, 0];
+      } else if (tMax[1] < tMax[2]) {
+        t = tMax[1]; y += step[1]; tMax[1] += tDelta[1]; normal = [0, -step[1], 0];
+      } else {
+        t = tMax[2]; z += step[2]; tMax[2] += tDelta[2]; normal = [0, 0, -step[2]];
+      }
+    }
+    return null;
+  }
+
+  // Would a pixel laid here be laid inside us?
+  inPixel(px, py, pz) {
+    const s = 1 / MICRO, p = this.pos, hw = this.half;
+    return (p[0] + hw > px * s && p[0] - hw < (px + 1) * s &&
+            p[1] + this.height > py * s && p[1] < (py + 1) * s &&
+            p[2] + hw > pz * s && p[2] - hw < (pz + 1) * s);
+  }
+
   // Standing in the same cell as a ladder is what counts as being on it.
   onLadder() {
     const w = this.world;
-    for (let yy = Math.floor(this.pos[1]); yy <= Math.floor(this.pos[1] + P_HEIGHT - 0.001); yy++) {
-      for (let zz = Math.floor(this.pos[2] - P_HALF); zz <= Math.floor(this.pos[2] + P_HALF); zz++) {
-        for (let xx = Math.floor(this.pos[0] - P_HALF); xx <= Math.floor(this.pos[0] + P_HALF); xx++) {
+    for (let yy = Math.floor(this.pos[1]); yy <= Math.floor(this.pos[1] + this.height - 0.001); yy++) {
+      for (let zz = Math.floor(this.pos[2] - this.half); zz <= Math.floor(this.pos[2] + this.half); zz++) {
+        for (let xx = Math.floor(this.pos[0] - this.half); xx <= Math.floor(this.pos[0] + this.half); xx++) {
           if (BLOCKS[w.getBlock(xx, yy, zz)].ladder) return true;
         }
       }
@@ -11540,18 +12000,24 @@ class Player {
   // Is anything solid directly under the player's feet?
   overSolidGround() {
     const y = Math.floor(this.pos[1] - 0.02);
-    for (let zz = Math.floor(this.pos[2] - P_HALF); zz <= Math.floor(this.pos[2] + P_HALF); zz++)
-      for (let xx = Math.floor(this.pos[0] - P_HALF); xx <= Math.floor(this.pos[0] + P_HALF); xx++)
-        if (isSolid(this.world.getBlock(xx, y, zz))) return true;
+    for (let zz = Math.floor(this.pos[2] - this.half); zz <= Math.floor(this.pos[2] + this.half); zz++)
+      for (let xx = Math.floor(this.pos[0] - this.half); xx <= Math.floor(this.pos[0] + this.half); xx++) {
+        const id = this.world.getBlock(xx, y, zz);
+        if (BLOCKS[id].micro) {
+          if (this.tiny && this.microHits(xx, y, zz, this.pos[0] - this.half, y, this.pos[2] - this.half,
+                                          this.pos[0] + this.half, y + 1, this.pos[2] + this.half)) return true;
+        } else if (isSolid(id)) return true;
+      }
     return false;
   }
 
   // Would placing a block here trap the player inside it?
   intersectsBlock(bx, by, bz) {
     const p = this.pos;
-    return (p[0] + P_HALF > bx && p[0] - P_HALF < bx + 1 &&
-            p[1] + P_HEIGHT > by && p[1] < by + 1 &&
-            p[2] + P_HALF > bz && p[2] - P_HALF < bz + 1);
+    const hw = this.half;
+    return (p[0] + hw > bx && p[0] - hw < bx + 1 &&
+            p[1] + this.height > by && p[1] < by + 1 &&
+            p[2] + hw > bz && p[2] - hw < bz + 1);
   }
 }
 </script>
@@ -11762,6 +12228,11 @@ const Game = {
       sea: new World((seed ^ 0x5ea90d) | 0, 'sea'),
     };
     if (save) for (const [k, v] of save.edits) this.worlds.overworld.edits.set(k, v);
+    if (save) {
+      this.worlds.overworld.loadMicro(save.micro);
+      this.worlds.nether.loadMicro(save.netherMicro);
+      this.worlds.end.loadMicro(save.endMicro);
+    }
     if (save && save.netherEdits) for (const [k, v] of save.netherEdits) this.worlds.nether.edits.set(k, v);
     if (save && save.endEdits) for (const [k, v] of save.endEdits) this.worlds.end.edits.set(k, v);
     if (save && save.dinoEdits) for (const [k, v] of save.dinoEdits) this.worlds.dinos.edits.set(k, v);
@@ -12314,7 +12785,64 @@ const Game = {
 
   // ---- world interaction ----------------------------------------------
   // A press: hit an animal if one is in the way, otherwise start on the block.
+  // A hulking fist lands on the whole face, not on one block of it: the three by
+  // three square of the face you struck goes at once, and goes to dust.
+  smash(hit) {
+    const n = hit.normal;
+    // the two axes that lie in the face we struck
+    const a = n[0] ? [0, 1, 0] : [1, 0, 0];
+    const b = n[1] ? [0, 0, 1] : (n[0] ? [0, 0, 1] : [0, 1, 0]);
+    let gone = 0;
+    for (let u = -1; u <= 1; u++)
+      for (let v = -1; v <= 1; v++) {
+        const x = hit.x + a[0] * u + b[0] * v;
+        const y = hit.y + a[1] * u + b[1] * v;
+        const z = hit.z + a[2] * u + b[2] * v;
+        if (y < 0 || y >= CY) continue;
+        const id = this.world.getBlock(x, y, z);
+        if (!id || isLiquid(id) || id === B.BEDROCK) continue;
+        if (BedWars.active && !BedWars.canBreak(x, y, z, id)) continue;
+        if (this.world.setBlock(x, y, z, 0)) { BedWars.placed.delete(BedWars.key(x, y, z)); gone++; }
+      }
+    if (!gone) return;
+    Sound.dig(hit.id);
+    Deep.stir(this, 30);
+  },
+
+  // ---- pixel blocks, which only exist for someone ant-sized ---------------
+  // Breaking one that belongs to a whole block opens that block up into the 512
+  // pixels it is made of first, so you can carve a tunnel through solid stone
+  // at a scale nothing your own size could.
+  breakMicro() {
+    const hit = this.player.microRaycast();
+    if (!hit) return;
+    if (hit.id === B.BEDROCK) { this.toast('Bedrock cannot be broken'); return; }
+    if (!this.world.setMicro(hit.px, hit.py, hit.pz, 0)) {
+      if (hit.whole) this.toast(thingName(hit.id) + ' does not come apart into pixels');
+      return;
+    }
+    Sound.dig(hit.id);
+    Deep.stir(this, 2);                 // a pixel is a very small noise
+  },
+
+  placeMicro() {
+    const held = this.hotbar[this.slot];
+    if (!held || isItem(held)) { this.toast('Hold a block to lay pixel blocks'); return; }
+    if (BLOCKS[held].boxes || BLOCKS[held].liquid || !BLOCKS[held].solid) {
+      this.toast(thingName(held) + ' does not come in pixels'); return;
+    }
+    const hit = this.player.microRaycast();
+    if (!hit) { this.toast('Nothing close enough to build on'); return; }
+    const [px, py, pz] = hit.place;
+    if (this.world.getMicro(px, py, pz)) return;
+    if (this.player.inPixel(px, py, pz)) { this.toast('You are standing there'); return; }
+    if (!this.world.setMicro(px, py, pz, held)) return;
+    Sound.place();
+  },
+
   startBreak() {
+    // A pixel block is a crumb: it comes away the moment you touch it, in any mode.
+    if (this.player.tiny) { this.breakMicro(); this.breakTimer = 0.12; this.mining = null; return; }
     const hit = this.player.raycast();
     const mob = Animals.pick(this.player.eye, this.player.dir, hit ? hit.dist : this.player.reach);
     if (mob) {
@@ -12351,6 +12879,7 @@ const Game = {
   },
 
   breakBlock() {
+    if (this.player.tiny) { this.breakMicro(); return; }
     const hit = this.player.raycast();
     // an animal standing in front of the block takes the hit instead
     const mob = Animals.pick(this.player.eye, this.player.dir, hit ? hit.dist : this.player.reach);
@@ -12366,6 +12895,7 @@ const Game = {
     }
     if (!hit) return;
     if (hit.id === B.BEDROCK) { this.toast('Bedrock cannot be broken'); return; }
+    if (Outfits.smashing()) { this.smash(hit); return; }
     if (BedWars.active) {
       const bed = BedWars.bedAt(hit.x, hit.y, hit.z);
       if (bed) {
@@ -12411,6 +12941,7 @@ const Game = {
     }
   },
   placeBlock(fromRepeat) {
+    if (this.player.tiny) { this.placeMicro(); return; }
     const hit = this.player.raycast();
 
     if (!fromRepeat) {
@@ -12522,7 +13053,7 @@ const Game = {
   // building: every click then goes into the walkway, never on top of it.
   bridging() {
     const p = this.player;
-    if (p.flying || p.groundY === null || p.pitch > -0.7) return false;
+    if (p.tiny || p.flying || p.groundY === null || p.pitch > -0.7) return false;
     return !!(this.input.forward || this.input.back || this.input.left || this.input.right);
   },
 
@@ -12568,9 +13099,9 @@ const Game = {
   },
 
   toggleFly() {
-    if (this.survivalRules()) {
+    if (this.survivalRules() && !Outfits.caped()) {
       this.player.flying = false;          // never leave survival airborne
-      this.toast('Flying is creative only');
+      this.toast('Flying is creative only \u2014 or wear the Steel Cape');
       return;
     }
     this.player.flying = !this.player.flying;
@@ -13248,9 +13779,10 @@ const Game = {
       const locked = document.pointerLockElement === this.canvas || this.dragLook;
       this.holdCheck();
       const breaking = (this.mouse.left && locked) || this.keyBreak;
-      if (breaking && this.mode === 'creative') {
+      // Pixel blocks never need digging, so holding the button just repeats.
+      if (breaking && (this.mode === 'creative' || this.player.tiny || Outfits.smashing())) {
         this.breakTimer -= dt;
-        if (this.breakTimer <= 0) { this.breakBlock(); this.breakTimer = 0.22; }
+        if (this.breakTimer <= 0) { this.breakBlock(); this.breakTimer = this.player.tiny ? 0.1 : 0.22; }
       } else if (breaking) {
         this.updateMining(dt);
       } else this.mining = null;
@@ -13379,7 +13911,9 @@ const Game = {
     else if (underwater) { fogColor = [0.08, 0.26, 0.45]; fogRange = [0.5, 20]; }
     if (p.inLava) { fogColor = [0.55, 0.16, 0.03]; fogRange = [0.2, 3]; }
 
-    const hit = this.ready ? p.raycast() : null;
+    const tiny = this.ready && p.tiny;
+    const hit = this.ready && !tiny ? p.raycast() : null;
+    const micro = tiny ? p.microRaycast() : null;
     this.lastHit = hit;
 
     // The outline of the block you are about to lay, shown exactly when a click
@@ -13389,7 +13923,7 @@ const Game = {
     if (this.ready && held && !isItem(held) && (this.bridging() || !hit)) ghost = this.bridgeTarget(held);
 
     return {
-      eye: [p.pos[0], p.pos[1] + P_EYE + p.bob, p.pos[2]],
+      eye: [p.pos[0], p.pos[1] + p.eyeHeight + p.bob, p.pos[2]],
       dir: p.dir,
       fov: this.fov,
       dayFactor: day, ambient, sunDir: sun, zenith, horizon, fogColor, fogRange,
@@ -13397,7 +13931,10 @@ const Game = {
       chunks: this.world.chunks.values(),
       mobs: Animals.list,
       drops: Drops.list.concat(Thrown.list),
-      highlight: hit ? [hit.x, hit.y, hit.z] : null,
+      highlight: micro ? [micro.px / MICRO, micro.py / MICRO, micro.pz / MICRO]
+                       : (hit ? [hit.x, hit.y, hit.z] : null),
+      highlightScale: micro ? 1 / MICRO : 1,
+      near: Math.max(0.02, 0.06 * p.scale),
       ghost,
       breakPos: this.mining ? [this.mining.x, this.mining.y, this.mining.z] : null,
       breakStage: this.mining && isFinite(this.mining.total)
@@ -13917,7 +14454,7 @@ const Game = {
     this.portalCooldown = Math.max(0, (this.portalCooldown || 0) - dt);
     const p = this.player;
     const at = dy => this.world.getBlock(Math.floor(p.pos[0]), Math.floor(p.pos[1] + dy), Math.floor(p.pos[2]));
-    const feet = at(0.2), head = at(P_EYE);
+    const feet = at(0.2 * p.scale), head = at(p.eyeHeight);
     const inside = feet === B.PORTAL || head === B.PORTAL;
     const inEnd = feet === B.END_PORTAL || head === B.END_PORTAL;
     if (inEnd) {
@@ -14353,6 +14890,9 @@ const Game = {
       if (edits.length > 120000) edits.length = 120000;
       localStorage.setItem(SAVE_KEY, JSON.stringify({
         seed: this.world.seed, edits,
+        micro: this.world.serializeMicro(),
+        netherMicro: this.worlds.nether.serializeMicro(500),
+        endMicro: this.worlds.end.serializeMicro(500),
         pos: this.player.pos, yaw: this.player.yaw, pitch: this.player.pitch,
         flying: this.player.flying, time: this.time, hotbar: this.hotbar, slot: this.slot,
         inventory: Inventory.serialize(),
@@ -14408,6 +14948,7 @@ function catalogue() {
   const out = [];
   for (let id = 1; id < BLOCKS.length; id++) {
     if (BLOCKS[id].flowing || BLOCKS[id].tv || id === B.TORCH_WALL) continue;
+    if (BLOCKS[id].micro) continue;              // a shell, never a thing you hold
     if (id === B.CRYSTAL_ROUSED || id === B.CRYSTAL_ALARMED) continue;   // one entry for the crystal
     if (BLOCKS[id].stairs && id !== B.STAIRS_N) continue;      // one entry for all four ways round
     out.push(id);

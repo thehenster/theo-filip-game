@@ -110,6 +110,11 @@ const Game = {
       sea: new World((seed ^ 0x5ea90d) | 0, 'sea'),
     };
     if (save) for (const [k, v] of save.edits) this.worlds.overworld.edits.set(k, v);
+    if (save) {
+      this.worlds.overworld.loadMicro(save.micro);
+      this.worlds.nether.loadMicro(save.netherMicro);
+      this.worlds.end.loadMicro(save.endMicro);
+    }
     if (save && save.netherEdits) for (const [k, v] of save.netherEdits) this.worlds.nether.edits.set(k, v);
     if (save && save.endEdits) for (const [k, v] of save.endEdits) this.worlds.end.edits.set(k, v);
     if (save && save.dinoEdits) for (const [k, v] of save.dinoEdits) this.worlds.dinos.edits.set(k, v);
@@ -662,7 +667,64 @@ const Game = {
 
   // ---- world interaction ----------------------------------------------
   // A press: hit an animal if one is in the way, otherwise start on the block.
+  // A hulking fist lands on the whole face, not on one block of it: the three by
+  // three square of the face you struck goes at once, and goes to dust.
+  smash(hit) {
+    const n = hit.normal;
+    // the two axes that lie in the face we struck
+    const a = n[0] ? [0, 1, 0] : [1, 0, 0];
+    const b = n[1] ? [0, 0, 1] : (n[0] ? [0, 0, 1] : [0, 1, 0]);
+    let gone = 0;
+    for (let u = -1; u <= 1; u++)
+      for (let v = -1; v <= 1; v++) {
+        const x = hit.x + a[0] * u + b[0] * v;
+        const y = hit.y + a[1] * u + b[1] * v;
+        const z = hit.z + a[2] * u + b[2] * v;
+        if (y < 0 || y >= CY) continue;
+        const id = this.world.getBlock(x, y, z);
+        if (!id || isLiquid(id) || id === B.BEDROCK) continue;
+        if (BedWars.active && !BedWars.canBreak(x, y, z, id)) continue;
+        if (this.world.setBlock(x, y, z, 0)) { BedWars.placed.delete(BedWars.key(x, y, z)); gone++; }
+      }
+    if (!gone) return;
+    Sound.dig(hit.id);
+    Deep.stir(this, 30);
+  },
+
+  // ---- pixel blocks, which only exist for someone ant-sized ---------------
+  // Breaking one that belongs to a whole block opens that block up into the 512
+  // pixels it is made of first, so you can carve a tunnel through solid stone
+  // at a scale nothing your own size could.
+  breakMicro() {
+    const hit = this.player.microRaycast();
+    if (!hit) return;
+    if (hit.id === B.BEDROCK) { this.toast('Bedrock cannot be broken'); return; }
+    if (!this.world.setMicro(hit.px, hit.py, hit.pz, 0)) {
+      if (hit.whole) this.toast(thingName(hit.id) + ' does not come apart into pixels');
+      return;
+    }
+    Sound.dig(hit.id);
+    Deep.stir(this, 2);                 // a pixel is a very small noise
+  },
+
+  placeMicro() {
+    const held = this.hotbar[this.slot];
+    if (!held || isItem(held)) { this.toast('Hold a block to lay pixel blocks'); return; }
+    if (BLOCKS[held].boxes || BLOCKS[held].liquid || !BLOCKS[held].solid) {
+      this.toast(thingName(held) + ' does not come in pixels'); return;
+    }
+    const hit = this.player.microRaycast();
+    if (!hit) { this.toast('Nothing close enough to build on'); return; }
+    const [px, py, pz] = hit.place;
+    if (this.world.getMicro(px, py, pz)) return;
+    if (this.player.inPixel(px, py, pz)) { this.toast('You are standing there'); return; }
+    if (!this.world.setMicro(px, py, pz, held)) return;
+    Sound.place();
+  },
+
   startBreak() {
+    // A pixel block is a crumb: it comes away the moment you touch it, in any mode.
+    if (this.player.tiny) { this.breakMicro(); this.breakTimer = 0.12; this.mining = null; return; }
     const hit = this.player.raycast();
     const mob = Animals.pick(this.player.eye, this.player.dir, hit ? hit.dist : this.player.reach);
     if (mob) {
@@ -699,6 +761,7 @@ const Game = {
   },
 
   breakBlock() {
+    if (this.player.tiny) { this.breakMicro(); return; }
     const hit = this.player.raycast();
     // an animal standing in front of the block takes the hit instead
     const mob = Animals.pick(this.player.eye, this.player.dir, hit ? hit.dist : this.player.reach);
@@ -714,6 +777,7 @@ const Game = {
     }
     if (!hit) return;
     if (hit.id === B.BEDROCK) { this.toast('Bedrock cannot be broken'); return; }
+    if (Outfits.smashing()) { this.smash(hit); return; }
     if (BedWars.active) {
       const bed = BedWars.bedAt(hit.x, hit.y, hit.z);
       if (bed) {
@@ -759,6 +823,7 @@ const Game = {
     }
   },
   placeBlock(fromRepeat) {
+    if (this.player.tiny) { this.placeMicro(); return; }
     const hit = this.player.raycast();
 
     if (!fromRepeat) {
@@ -870,7 +935,7 @@ const Game = {
   // building: every click then goes into the walkway, never on top of it.
   bridging() {
     const p = this.player;
-    if (p.flying || p.groundY === null || p.pitch > -0.7) return false;
+    if (p.tiny || p.flying || p.groundY === null || p.pitch > -0.7) return false;
     return !!(this.input.forward || this.input.back || this.input.left || this.input.right);
   },
 
@@ -916,9 +981,9 @@ const Game = {
   },
 
   toggleFly() {
-    if (this.survivalRules()) {
+    if (this.survivalRules() && !Outfits.caped()) {
       this.player.flying = false;          // never leave survival airborne
-      this.toast('Flying is creative only');
+      this.toast('Flying is creative only \u2014 or wear the Steel Cape');
       return;
     }
     this.player.flying = !this.player.flying;
@@ -1596,9 +1661,10 @@ const Game = {
       const locked = document.pointerLockElement === this.canvas || this.dragLook;
       this.holdCheck();
       const breaking = (this.mouse.left && locked) || this.keyBreak;
-      if (breaking && this.mode === 'creative') {
+      // Pixel blocks never need digging, so holding the button just repeats.
+      if (breaking && (this.mode === 'creative' || this.player.tiny || Outfits.smashing())) {
         this.breakTimer -= dt;
-        if (this.breakTimer <= 0) { this.breakBlock(); this.breakTimer = 0.22; }
+        if (this.breakTimer <= 0) { this.breakBlock(); this.breakTimer = this.player.tiny ? 0.1 : 0.22; }
       } else if (breaking) {
         this.updateMining(dt);
       } else this.mining = null;
@@ -1727,7 +1793,9 @@ const Game = {
     else if (underwater) { fogColor = [0.08, 0.26, 0.45]; fogRange = [0.5, 20]; }
     if (p.inLava) { fogColor = [0.55, 0.16, 0.03]; fogRange = [0.2, 3]; }
 
-    const hit = this.ready ? p.raycast() : null;
+    const tiny = this.ready && p.tiny;
+    const hit = this.ready && !tiny ? p.raycast() : null;
+    const micro = tiny ? p.microRaycast() : null;
     this.lastHit = hit;
 
     // The outline of the block you are about to lay, shown exactly when a click
@@ -1737,7 +1805,7 @@ const Game = {
     if (this.ready && held && !isItem(held) && (this.bridging() || !hit)) ghost = this.bridgeTarget(held);
 
     return {
-      eye: [p.pos[0], p.pos[1] + P_EYE + p.bob, p.pos[2]],
+      eye: [p.pos[0], p.pos[1] + p.eyeHeight + p.bob, p.pos[2]],
       dir: p.dir,
       fov: this.fov,
       dayFactor: day, ambient, sunDir: sun, zenith, horizon, fogColor, fogRange,
@@ -1745,7 +1813,10 @@ const Game = {
       chunks: this.world.chunks.values(),
       mobs: Animals.list,
       drops: Drops.list.concat(Thrown.list),
-      highlight: hit ? [hit.x, hit.y, hit.z] : null,
+      highlight: micro ? [micro.px / MICRO, micro.py / MICRO, micro.pz / MICRO]
+                       : (hit ? [hit.x, hit.y, hit.z] : null),
+      highlightScale: micro ? 1 / MICRO : 1,
+      near: Math.max(0.02, 0.06 * p.scale),
       ghost,
       breakPos: this.mining ? [this.mining.x, this.mining.y, this.mining.z] : null,
       breakStage: this.mining && isFinite(this.mining.total)
@@ -2265,7 +2336,7 @@ const Game = {
     this.portalCooldown = Math.max(0, (this.portalCooldown || 0) - dt);
     const p = this.player;
     const at = dy => this.world.getBlock(Math.floor(p.pos[0]), Math.floor(p.pos[1] + dy), Math.floor(p.pos[2]));
-    const feet = at(0.2), head = at(P_EYE);
+    const feet = at(0.2 * p.scale), head = at(p.eyeHeight);
     const inside = feet === B.PORTAL || head === B.PORTAL;
     const inEnd = feet === B.END_PORTAL || head === B.END_PORTAL;
     if (inEnd) {
@@ -2701,6 +2772,9 @@ const Game = {
       if (edits.length > 120000) edits.length = 120000;
       localStorage.setItem(SAVE_KEY, JSON.stringify({
         seed: this.world.seed, edits,
+        micro: this.world.serializeMicro(),
+        netherMicro: this.worlds.nether.serializeMicro(500),
+        endMicro: this.worlds.end.serializeMicro(500),
         pos: this.player.pos, yaw: this.player.yaw, pitch: this.player.pitch,
         flying: this.player.flying, time: this.time, hotbar: this.hotbar, slot: this.slot,
         inventory: Inventory.serialize(),
@@ -2756,6 +2830,7 @@ function catalogue() {
   const out = [];
   for (let id = 1; id < BLOCKS.length; id++) {
     if (BLOCKS[id].flowing || BLOCKS[id].tv || id === B.TORCH_WALL) continue;
+    if (BLOCKS[id].micro) continue;              // a shell, never a thing you hold
     if (id === B.CRYSTAL_ROUSED || id === B.CRYSTAL_ALARMED) continue;   // one entry for the crystal
     if (BLOCKS[id].stairs && id !== B.STAIRS_N) continue;      // one entry for all four ways round
     out.push(id);
