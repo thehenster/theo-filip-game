@@ -324,7 +324,10 @@ class Renderer {
       if (verts + def.template.length * 24 > this.mobMaxVerts) break;
       const cy = Math.cos(m.yaw), sy = Math.sin(m.yaw);
       const flash = m.hurt > 0 ? 2.3 : 1;
-      const sky = m.sky, blk = m.blk;
+      const sky = m.sky;
+      // Sculk-grown things carry their own light: in the Deep Lands they are the
+      // only thing you can see, and a shape you cannot see is no use to anybody.
+      const blk = def.glow ? Math.max(m.blk, def.glow) : m.blk;
       for (const part of def.template) {
         if (m.sheared && part.id === 'wool') continue;
         const a = m.partAngle(part), r = m.partRoll(part);

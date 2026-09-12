@@ -12,6 +12,7 @@
 <div id="underwater"></div>
 <div id="hurt"></div>
 <div id="portalfx"></div>
+<div id="boomflash"></div>
 
 <div id="hud">
   <div id="bossbar"><div id="bossname">Ender Dragon</div><div class="bosstrack"><div id="bossfill"></div></div></div>
@@ -20,12 +21,20 @@
   <div id="toast"></div>
   <div id="arenaboard" class="hidden"></div>
   <div id="arenanews" class="hidden"></div>
+  <div id="outfit" class="hidden"></div>
+  <!-- The Deep Lands only. How much noise you are making, and what is listening. -->
+  <div id="noise" class="hidden">
+    <span id="noiselabel">Quiet</span>
+    <span class="noisetrack"><span id="noisefill" class="tier0"></span></span>
+    <span class="noisehint">sneak to go silent</span>
+  </div>
   <div id="bottom">
     <div id="blockname"></div>
     <div id="airbar"></div>
     <div id="stats">
       <div id="armorbar"></div>
       <div id="hearts"></div>
+      <div id="needs"><span id="foodbar"></span><span id="waterbar"></span></div>
     </div>
     <div id="hotbar"></div>
   </div>
@@ -94,6 +103,7 @@
 
     <div class="tabs" role="tablist">
       <button class="tab active" data-tab="play">Play</button>
+      <button class="tab" data-tab="dress">Dressing room</button>
       <button class="tab" data-tab="settings">Settings</button>
       <button class="tab" data-tab="controls">Controls</button>
     </div>
@@ -127,6 +137,11 @@
         <button id="newworld">New world</button>
       </div>
       <p class="foot">The world is saved to this browser automatically.</p>
+    </section>
+
+    <section class="tab-page" data-page="dress" hidden>
+      <p class="hint">One outfit at a time. What you wear gives you a power &mdash; press <kbd>G</kbd> to use it.</p>
+      <div id="dress-list" class="dress"></div>
     </section>
 
     <section class="tab-page" data-page="settings" hidden>
@@ -179,6 +194,8 @@
         <div><kbd>P</kbd> on a table<span>Open the 3&times;3 grid</span></div>
         <div><kbd>F</kbd><span>Toggle flight (creative)</span></div>
         <div><kbd>T</kbd> / <kbd>N</kbd><span>Freeze time / skip 12h</span></div>
+        <div><kbd>G</kbd><span>Use your outfit's power</span></div>
+        <div><kbd>R</kbd><span>Solytra boost &mdash; hold <kbd>Space</kbd> while falling to glide</span></div>
         <div><kbd>F3</kbd><span>Debug overlay</span></div>
         <div><kbd>Esc</kbd><span>Back to this screen</span></div>
       </div>
@@ -223,6 +240,18 @@
   </div>
 </div>
 
+<div id="store">
+  <div class="panel trade-panel">
+    <div class="mc-head">
+      <h2>Shop</h2>
+      <p class="hint">Emeralds are the money &middot; sell what you don't need &middot; <kbd>Esc</kbd> to close</p>
+    </div>
+    <div class="trade-purse" id="store-purse"></div>
+    <div id="store-tabs" class="chips"></div>
+    <div id="store-list"></div>
+  </div>
+</div>
+
 <div id="shop">
   <div class="panel trade-panel">
     <div class="mc-head">
@@ -240,6 +269,17 @@
     <p class="sub" id="arenaend-sub"></p>
     <button id="arenaend-again" class="primary">Play again</button>
     <div class="menu-buttons"><button id="arenaend-leave">Back to the overworld</button></div>
+  </div>
+</div>
+
+<div id="printer">
+  <div class="panel trade-panel">
+    <div class="mc-head">
+      <h2>3D Printer</h2>
+      <p class="hint">Prints into the clear space in front of it &middot; <kbd>Esc</kbd> to close</p>
+    </div>
+    <div class="trade-purse" id="printer-note"></div>
+    <div id="printer-list"></div>
   </div>
 </div>
 
@@ -273,6 +313,15 @@
 <script src="js/entities.js"></script>
 <script src="js/bedwars.js"></script>
 <script src="js/hunger.js"></script>
+<script src="js/outfits.js"></script>
+<script src="js/printer.js"></script>
+<script src="js/halloween.js"></script>
+<script src="js/future.js"></script>
+<script src="js/deep.js"></script>
+<script src="js/hacker.js"></script>
+<script src="js/sea.js"></script>
+<script src="js/guns.js"></script>
+<script src="js/shops.js"></script>
 <script src="js/renderer.js"></script>
 <script src="js/player.js"></script>
 <script src="js/sound.js"></script>

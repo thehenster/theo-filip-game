@@ -87,19 +87,72 @@ const Thrown = {
       age: 0, delay: 99, spin: 0, sky: 1, blk: 0, onGround: false,
     });
   },
+  // A trident: heavier than an arrow, hits harder, and comes back to you as a
+  // dropped item where it lands rather than vanishing.
+  hurl(world, player, id) {
+    const d = player.dir, eye = player.eye;
+    this.list.push({
+      id, count: 1, arrow: true, trident: true, damage: 9,
+      x: eye[0] + d[0] * 0.5, y: eye[1] + d[1] * 0.5, z: eye[2] + d[2] * 0.5,
+      vx: d[0] * 34, vy: d[1] * 34 + 1.2, vz: d[2] * 34,
+      age: 0, delay: 99, spin: 0, sky: 1, blk: 0, onGround: false, lit: null,
+    });
+  },
+
+  // An arrow flies flatter and faster than a pearl, and what it hits it hurts.
+  shoot(world, player, id) {
+    const d = player.dir, eye = player.eye;
+    this.list.push({
+      id, count: 1, arrow: true,
+      x: eye[0] + d[0] * 0.5, y: eye[1] + d[1] * 0.5, z: eye[2] + d[2] * 0.5,
+      vx: d[0] * 46, vy: d[1] * 46 + 0.4, vz: d[2] * 46,   // fast and nearly flat
+      age: 0, delay: 99, spin: 0, sky: 1, blk: 0, onGround: false,
+    });
+  },
+
   update(dt, world, onLand) {
     for (let i = this.list.length - 1; i >= 0; i--) {
       const p = this.list[i];
+
       p.age += dt;
       p.spin += dt * 9;
       p.vy -= 16 * dt;
-      const steps = Math.max(1, Math.ceil(Math.hypot(p.vx, p.vy, p.vz) * dt / 0.3));
-      let hit = false;
-      for (let s = 0; s < steps && !hit; s++) {
+      const steps = Math.max(1, Math.ceil(Math.hypot(p.vx, p.vy, p.vz) * dt / 0.25));
+      let hit = false, struck = null;
+      for (let s = 0; s < steps && !hit && !struck; s++) {
         const sdt = dt / steps;
         const nx = p.x + p.vx * sdt, ny = p.y + p.vy * sdt, nz = p.z + p.vz * sdt;
-        if (isSolid(world.getBlock(Math.floor(nx), Math.floor(ny), Math.floor(nz)))) { hit = true; break; }
+        const bx = Math.floor(nx), by = Math.floor(ny), bz = Math.floor(nz);
+        const into = world.getBlock(bx, by, bz);
+        if (isSolid(into)) { hit = true; p.hitId = into; p.hitAt = [bx, by, bz]; break; }
         p.x = nx; p.y = ny; p.z = nz;
+        // A trident passing through the gap in a prismarine frame opens it.
+        if (p.trident && !into) {
+          const cell = bx + ',' + by + ',' + bz;
+          if (p.lit !== cell) {
+            p.lit = cell;
+            if (typeof Portal !== 'undefined' && Portal.lightSea(world, bx, by, bz)) {
+              p.opened = true;
+            }
+          }
+        }
+        // an arrow is checked against the animals every step of the way, or at
+        // forty blocks a second it would fly straight through them
+        if (p.arrow && typeof Animals !== 'undefined') {
+          struck = Animals.list.find(m => !m.dead &&
+            Math.abs(m.x - p.x) < m.halfW + 0.3 && Math.abs(m.z - p.z) < m.halfW + 0.3 &&
+            p.y > m.y - 0.2 && p.y < m.y + m.def.height + 0.2);
+        }
+      }
+      if (struck) {
+        this.list.splice(i, 1);
+        const len = Math.hypot(p.vx, p.vy, p.vz) || 1;
+        const res = Animals.punch(struck, [p.vx / len, p.vy / len, p.vz / len], p.damage || 5, world);
+        if (res.killed) {
+          if (struck.def.bot) BedWars.botDied(struck, 'an arrow');
+          if (struck.type && struck.type.startsWith('tribute_')) Hunger.tributeDied(struck, 'an arrow');
+        }
+        continue;
       }
       if (hit || p.age > 6 || p.y < -30) {
         this.list.splice(i, 1);

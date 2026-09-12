@@ -5,18 +5,45 @@ const Portal = {
   // Try to light the empty space at (x,y,z). A portal stands in a flat plane, so
   // we flood the air in that plane and check obsidian encloses every edge of it.
   light(world, x, y, z) {
+    return this.open(world, x, y, z, B.OBSIDIAN, B.PORTAL, null);
+  },
+
+  // The same frame trick, but built from glowstone and filled with water: the
+  // water shivers and you are looking at somewhere a very long time ago.
+  lightTime(world, x, y, z) {
+    return this.open(world, x, y, z, B.GLOWSTONE, B.TIME_PORTAL, 'water');
+  },
+
+  // Darkstone for a frame and lava poured in: the rift that opens looks forward
+  // instead of back, to a city that did not end well.
+  lightFuture(world, x, y, z) {
+    return this.open(world, x, y, z, B.DARKSTONE, B.FUTURE_PORTAL, 'lava');
+  },
+
+  // Reinforced deepslate, and a Heart of the Deep pressed into the gap.
+  lightDeep(world, x, y, z) {
+    return this.open(world, x, y, z, B.REINFORCED_DEEPSLATE, B.DEEP_PORTAL, null);
+  },
+
+  // Prismarine for a frame and a trident thrown through the gap.
+  lightSea(world, x, y, z) {
+    return this.open(world, x, y, z, B.PRISMARINE, B.SEA_PORTAL, null);
+  },
+
+  open(world, x, y, z, frame, fill, fluid) {
     for (const axis of [0, 2]) {
-      const cells = this.region(world, x, y, z, axis);
+      const cells = this.region(world, x, y, z, axis, frame, fill, fluid);
       if (!cells) continue;
-      for (const c of cells) world.setBlock(c[0], c[1], c[2], B.PORTAL);
+      for (const c of cells) world.setBlock(c[0], c[1], c[2], fill);
       return true;
     }
     return false;
   },
 
-  region(world, x, y, z, axis) {
+  region(world, x, y, z, axis, frame = B.OBSIDIAN, fill = B.PORTAL, fluid = null) {
+    const hollow = id => id === 0 || id === fill || (fluid && BLOCKS[id].fluid === fluid);
     const here = world.getBlock(x, y, z);
-    if (here !== 0 && here !== B.PORTAL) return null;
+    if (!hollow(here)) return null;
     const across = axis === 0 ? [1, 0, 0] : [0, 0, 1];
     const stack = [[x, y, z]];
     const seen = new Map();
@@ -26,8 +53,8 @@ const Portal = {
       const key = cx + ',' + cy + ',' + cz;
       if (seen.has(key)) continue;
       const id = world.getBlock(cx, cy, cz);
-      if (id === B.OBSIDIAN) continue;                       // the frame: fine, stop here
-      if (id !== 0 && id !== B.PORTAL) return null;          // anything else leaks
+      if (id === frame) continue;                            // the frame: fine, stop here
+      if (!hollow(id)) return null;                          // anything else leaks
       seen.set(key, [cx, cy, cz]);
       if (seen.size > this.MAX_CELLS) return null;
       const a = axis === 0 ? cx : cz;
@@ -54,7 +81,9 @@ const Portal = {
       const key = cx + ',' + cy + ',' + cz;
       if (seen.has(key)) continue;
       seen.add(key);
-      if (world.getBlock(cx, cy, cz) !== B.PORTAL) continue;
+      const here2 = world.getBlock(cx, cy, cz);
+      if (here2 !== B.PORTAL && here2 !== B.TIME_PORTAL && here2 !== B.FUTURE_PORTAL
+          && here2 !== B.DEEP_PORTAL && here2 !== B.SEA_PORTAL && here2 !== B.HACK_PORTAL) continue;
       world.setBlock(cx, cy, cz, 0);
       for (let d = 0; d < 6; d++) stack.push([cx + DIRS[d][0], cy + DIRS[d][1], cz + DIRS[d][2]]);
     }
@@ -67,46 +96,46 @@ const Portal = {
   },
 
   // Look for a portal near the arrival point, and build one if there is none.
-  findOrBuild(world, tx, tz) {
+  findOrBuild(world, tx, tz, frame = B.OBSIDIAN, fill = B.PORTAL) {
     for (let dx = -12; dx <= 12; dx++) {
       for (let dz = -12; dz <= 12; dz++) {
         const x = tx + dx, z = tz + dz;
         if (!world.getChunk(x >> 4, z >> 4)) continue;
         for (let y = CY - 6; y > 2; y--) {
-          if (world.getBlock(x, y, z) === B.PORTAL) return [x + 0.5, y, z + 0.5];
+          if (world.getBlock(x, y, z) === fill) return [x + 0.5, y, z + 0.5];
         }
       }
     }
-    return this.build(world, tx, tz);
+    return this.build(world, tx, tz, frame, fill);
   },
 
   // A fresh portal on the first solid ground with headroom.
-  build(world, tx, tz) {
+  build(world, tx, tz, frame = B.OBSIDIAN, fill = B.PORTAL) {
     let base = -1;
-    const ceiling = world.dimension === 'nether' ? 118 : CY - 8;
+    const ceiling = world.dimension === 'nether' ? 118 : (world.dimension === 'deep' ? DEEP_ROOF - 2 : CY - 8);
     for (let y = ceiling; y > 3; y--) {
       if (!isSolid(world.getBlock(tx, y, tz))) continue;
       let clear = true;
       for (let k = 1; k <= 5 && clear; k++) if (isSolid(world.getBlock(tx, y + k, tz))) clear = false;
       if (clear) { base = y + 1; break; }
     }
-    if (base < 0) base = world.dimension === 'nether' ? 40 : SEA_LEVEL + 4;
+    if (base < 0) base = world.dimension === 'nether' ? 40 : (world.dimension === 'deep' ? DEEP_FLOOR + 1 : SEA_LEVEL + 4);
 
     // a small obsidian pad, then the frame around a 2 x 3 doorway
     for (let dx = -2; dx <= 3; dx++) for (let dz = -2; dz <= 2; dz++) {
-      world.setBlock(tx + dx, base - 1, tz + dz, B.OBSIDIAN);
+      world.setBlock(tx + dx, base - 1, tz + dz, frame);
       for (let k = 0; k < 5; k++) world.setBlock(tx + dx, base + k, tz + dz, 0);
     }
     for (let dx = -1; dx <= 2; dx++) {
-      world.setBlock(tx + dx, base - 1, tz, B.OBSIDIAN);
-      world.setBlock(tx + dx, base + 3, tz, B.OBSIDIAN);
+      world.setBlock(tx + dx, base - 1, tz, frame);
+      world.setBlock(tx + dx, base + 3, tz, frame);
     }
     for (let k = 0; k <= 3; k++) {
-      world.setBlock(tx - 1, base + k, tz, B.OBSIDIAN);
-      world.setBlock(tx + 2, base + k, tz, B.OBSIDIAN);
+      world.setBlock(tx - 1, base + k, tz, frame);
+      world.setBlock(tx + 2, base + k, tz, frame);
     }
     for (let dx = 0; dx <= 1; dx++) for (let k = 0; k <= 2; k++) {
-      world.setBlock(tx + dx, base + k, tz, B.PORTAL);
+      world.setBlock(tx + dx, base + k, tz, fill);
     }
     return [tx + 0.5, base, tz + 0.5];
   },

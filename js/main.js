@@ -5,7 +5,7 @@ const NEXT_SEED_KEY = 'voxelcraft.nextseed';
 
 // Everything the home screen can change, and what it does when it changes.
 const Settings = {
-  values: { viewDist: 8, sensitivity: 1, fov: 70, volume: 35, dayLength: 600 },
+  values: { viewDist: 8, sensitivity: 1, fov: 70, volume: 35, dayLength: 600, outfit: 'none' },
   load() {
     try {
       const raw = localStorage.getItem(SETTINGS_KEY);
@@ -67,6 +67,7 @@ const Game = {
     defineAnimals();
     defineBots();
     defineTributes();
+    defineSpawnEggs();
     buildMobSkins();
     defineArenas();
     defineRecipes();
@@ -101,12 +102,23 @@ const Game = {
       bedwars: new World(1, 'bedwars'),
       rush: new World(2, 'rush'),
       hunger: new World((seed ^ 0x11a6e2) | 0, 'hunger'),
+      dinos: new World((seed ^ 0x0d1105) | 0, 'dinos'),
+      halloween: new World((seed ^ 0x4a11ee) | 0, 'halloween'),
+      future: new World((seed ^ 0x2f0704) | 0, 'future'),
+      deep: new World((seed ^ 0x0deec0) | 0, 'deep'),
+      hacker: new World((seed ^ 0x4ac3ed) | 0, 'hacker'),
+      sea: new World((seed ^ 0x5ea90d) | 0, 'sea'),
     };
     if (save) for (const [k, v] of save.edits) this.worlds.overworld.edits.set(k, v);
     if (save && save.netherEdits) for (const [k, v] of save.netherEdits) this.worlds.nether.edits.set(k, v);
     if (save && save.endEdits) for (const [k, v] of save.endEdits) this.worlds.end.edits.set(k, v);
+    if (save && save.dinoEdits) for (const [k, v] of save.dinoEdits) this.worlds.dinos.edits.set(k, v);
+    if (save && save.hallowEdits) for (const [k, v] of save.hallowEdits) this.worlds.halloween.edits.set(k, v);
+    if (save && save.futureEdits) for (const [k, v] of save.futureEdits) this.worlds.future.edits.set(k, v);
     if (save && save.dragonSlain) this.worlds.end.dragonSlain = true;
-    this.dimension = (save && save.dimension) || 'overworld';
+    // You always start at home. Coming back to a saved game in the Deep Lands,
+    // or the Nether, or inside a pumpkin, is not a kindness to anybody.
+    this.dimension = 'overworld';
     this.world = this.worlds[this.dimension];
     this.player = new Player(this.world);
 
@@ -115,7 +127,7 @@ const Game = {
     this.bindInput();
 
     // spawn: generate the home chunk first so we can stand on the surface
-    const spawn = save ? save.pos : null;
+    const spawn = save ? (save.overPos || (save.dimension === 'overworld' || !save.dimension ? save.pos : null)) : null;
     const home = spawn ? [Math.floor(spawn[0]), Math.floor(spawn[2])] : this.findSpawn();
     const sx = home[0], sz = home[1];
     this.world.generateChunk(sx >> 4, sz >> 4);
@@ -186,6 +198,10 @@ const Game = {
     bind('set-vol', 'out-vol', 'volume', n => n, n => n + '%');
     bind('set-day', 'out-day', 'dayLength', n => n, n => Math.round(n / 60) + ' min');
 
+    Outfits.worn = Settings.values.outfit || 'none';
+    Outfits.buildCards(this);
+    Outfits.refreshHud();
+
     const seed = document.getElementById('set-seed');
     seed.value = localStorage.getItem(NEXT_SEED_KEY) || '';
     seed.addEventListener('input', () => {
@@ -222,6 +238,7 @@ const Game = {
           const now = performance.now();
           if (now - this.lastSpace < 300) this.toggleFly();
           this.lastSpace = now;
+          if (this.player && this.player.onGround) Deep.stir(this, 8);
         }
         this.input[keyMap[e.code]] = 1;
         return;
@@ -238,18 +255,24 @@ const Game = {
         const n = +e.code.slice(5);
         if (n >= 1 && n <= 9) this.selectSlot(n - 1);
       } else if (e.code === 'KeyE') {
-        if (this.shopOpen) this.closeShop();
+        if (this.storeOpen) this.closeStore();
+        else if (this.shopOpen) this.closeShop();
+        else if (this.printerAt) this.closePrinter();
         else if (this.chestAt) this.closeChest();
         else if (this.trading) this.closeTrading();
         else if (this.furnaceOpen) this.closeFurnace();
         else this.toggleInventory();
       }
+      else if (e.code === 'KeyG') { if (!this.paused && this.ready) Outfits.use(this); }
       else if (e.code === 'KeyF') this.toggleFly();
+      else if (e.code === 'KeyR') { if (!this.paused && this.ready && !this.solytraBoost()) this.toast('That needs a Solytra on your back'); }
       else if (e.code === 'F3') { e.preventDefault(); this.showDebug = !this.showDebug; document.getElementById('debug').classList.toggle('hidden', !this.showDebug); }
       else if (e.code === 'KeyT') { this.timeFlow = !this.timeFlow; this.toast(this.timeFlow ? 'Time flowing' : 'Time frozen'); }
       else if (e.code === 'KeyN') { this.time = (this.time + 0.5) % 1; this.toast('Time skipped'); }
       else if (e.code === 'Escape') {
-        if (this.shopOpen) this.closeShop();
+        if (this.storeOpen) this.closeStore();
+        else if (this.shopOpen) this.closeShop();
+        else if (this.printerAt) this.closePrinter();
         else if (this.chestAt) this.closeChest();
         else if (this.furnaceOpen) this.closeFurnace();
         else if (this.trading) this.closeTrading();
@@ -270,6 +293,12 @@ const Game = {
     addEventListener('mousemove', e => {
       const locked = document.pointerLockElement === this.canvas;
       if (!locked) {
+        if (this.held) {
+          // it thought you were mining; you are actually looking around
+          this.heldMoved = (this.heldMoved || 0) + Math.abs(e.movementX) + Math.abs(e.movementY);
+          if (this.heldMoved < 10) return;
+          this.holdBreak();
+        }
         if (!this.dragging) return;
         this.dragMoved += Math.abs(e.movementX) + Math.abs(e.movementY);
       }
@@ -281,9 +310,14 @@ const Game = {
     });
     this.canvas.addEventListener('mousedown', e => {
       if (document.pointerLockElement !== this.canvas) {
-        // drag to look; a click that barely moves still breaks or places
+        // No pointer lock here (an artifact frame will not grant it), so the
+        // same button has to do two jobs: drag it to look, hold it still to
+        // mine or build. Which one it is falls out of what you do next.
         if (!this.dragLook || this.paused) return;
         this.dragging = true; this.dragMoved = 0;
+        this.dragButton = e.button;
+        this.dragSince = performance.now();
+        this.held = false;
         return;
       }
       if (e.button === 0) { this.mouse.left = true; this.startBreak(); }
@@ -291,9 +325,12 @@ const Game = {
       if (e.button === 1) { e.preventDefault(); this.pickBlock(); }
     });
     addEventListener('mouseup', e => {
-      if (this.dragging) {
-        this.dragging = false;
-        if (this.dragMoved < 8) { if (e.button === 2) this.placeBlock(); else if (e.button === 0) this.startBreak(); }
+      if (this.dragging || this.held) {
+        const wasHeld = this.held, moved = this.dragMoved;
+        this.dragging = false; this.held = false;
+        if (!wasHeld && moved < 8) {          // a tap: one break, or one block laid
+          if (e.button === 2) this.placeBlock(); else if (e.button === 0) this.startBreak();
+        }
       }
       if (e.button === 0) this.mouse.left = false;
       if (e.button === 2) this.mouse.right = false;
@@ -308,6 +345,15 @@ const Game = {
       const locked = document.pointerLockElement === this.canvas;
       if (locked) this.dragLook = false;
       if (!locked && this.dragLook) return;      // fallback mode drives the menu itself
+      // We let go of the pointer on purpose to open a window. Pause, but leave
+      // the menu where it is, or it lands on top of the window you just opened.
+      if (!locked && this.panelOpen()) {
+        this.paused = true;
+        for (const k in this.input) this.input[k] = 0;
+        this.mouse.left = this.mouse.right = false;
+        this.keyBreak = this.keyPlace = false;
+        return;
+      }
       this.paused = !locked;
       document.getElementById('menu').classList.toggle('hidden', locked);
       if (!locked) {
@@ -325,7 +371,7 @@ const Game = {
       setTimeout(() => { if (document.pointerLockElement !== this.canvas) this.enterDragLook(); }, 500);
     };
     document.getElementById('play').addEventListener('click', play);
-    this.canvas.addEventListener('click', () => { if (this.paused && !this.inventoryOpen && !this.trading) play(); });
+    this.canvas.addEventListener('click', () => { if (this.paused && !this.panelOpen()) play(); });
     document.getElementById('newworld').addEventListener('click', () => {
       if (!confirm('Discard this world and generate a new one?')) return;
       localStorage.removeItem(SAVE_KEY);
@@ -342,6 +388,36 @@ const Game = {
       document.getElementById('arenaend').classList.add('hidden');
       this.setMode('creative');
     });
+  },
+
+  // Hold the button still for a moment and it stops being a look-drag and starts
+  // being a mine or a build, which then repeats for as long as you hold it.
+  holdCheck() {
+    if (!this.dragLook || this.held || !this.dragging) return;
+    if (this.dragMoved >= 8) return;
+    if (performance.now() - this.dragSince < 220) return;
+    this.held = true;
+    this.dragging = false;
+    this.heldMoved = 0;
+    if (this.dragButton === 2) { this.mouse.right = true; this.placeBlock(); this.placeTimer = 0.28; }
+    else { this.mouse.left = true; this.startBreak(); }
+  },
+
+  // Once it has decided you are mining, moving the pointer changes its mind
+  // again: looking around always wins over digging.
+  holdBreak() {
+    this.held = false;
+    this.dragging = true;
+    this.mouse.left = this.mouse.right = false;
+    this.mining = null;
+  },
+
+  // Is one of the game's own windows open? Opening any of them releases pointer
+  // lock, and without this the pointer-lock handler would take that as "the
+  // player has stepped away" and put the main menu up over the top of it.
+  panelOpen() {
+    return !!(this.inventoryOpen || this.chestAt || this.furnaceOpen || this.printerAt
+              || this.trading || this.shopOpen || this.storeOpen);
   },
 
   // Pointer lock is unavailable in some embeds; play with click-drag instead.
@@ -462,10 +538,79 @@ const Game = {
     this.renderer.buildHandMesh(this.hotbar[this.slot]);
   },
 
+  // ---- the shop --------------------------------------------------------
+  openStore() {
+    this.storeOpen = true;
+    this.storeTab = this.storeTab || 'Weapons';
+    document.getElementById('store').classList.add('open');
+    document.exitPointerLock();
+    document.getElementById('menu').classList.add('hidden');   // never behind a window
+    if (this.dragLook) this.paused = true;
+    this.refreshStore();
+    Sound.animal('hmm', 1);
+  },
+  closeStore() {
+    this.storeOpen = false;
+    document.getElementById('store').classList.remove('open');
+    if (this.dragLook) { this.paused = false; return; }
+    const p = this.canvas.requestPointerLock();
+    if (p && p.catch) p.catch(() => this.enterDragLook());
+    setTimeout(() => {
+      if (document.pointerLockElement !== this.canvas && !this.panelOpen()) this.enterDragLook();
+    }, 400);
+  },
+  refreshStore() {
+    if (!this.storeOpen) return;
+    const stock = Store.stock();
+    document.getElementById('store-purse').innerHTML =
+      '<img src="' + thingIcon(I.EMERALD) + '" alt=""> ' + Inventory.count(I.EMERALD) + ' emeralds';
+    const tabs = document.getElementById('store-tabs');
+    tabs.innerHTML = '';
+    for (const name in stock) {
+      const b = document.createElement('button');
+      b.className = 'chip' + (name === this.storeTab ? ' active' : '');
+      b.textContent = name;
+      b.addEventListener('click', () => { this.storeTab = name; this.refreshStore(); });
+      tabs.appendChild(b);
+    }
+    const list = document.getElementById('store-list');
+    list.innerHTML = '';
+    for (const o of stock[this.storeTab] || []) {
+      const b = document.createElement('button');
+      b.className = 'deal';
+      if (o.sellId) {
+        b.innerHTML =
+          '<span class="side"><img src="' + thingIcon(o.sellId) + '" alt="">' +
+            '<span class="qty">' + o.sellN + ' ' + thingName(o.sellId) + '</span></span>' +
+          '<span class="to">&rarr;</span>' +
+          '<span class="side"><img src="' + thingIcon(I.EMERALD) + '" alt="">' +
+            '<span class="qty">' + o.pay + ' emerald' + (o.pay === 1 ? '' : 's') + '</span></span>' +
+          '<span class="left">you have ' + Inventory.count(o.sellId) + '</span>';
+      } else {
+        b.innerHTML =
+          '<span class="side"><img src="' + thingIcon(I.EMERALD) + '" alt="">' +
+            '<span class="qty">' + o.cost + ' emerald' + (o.cost === 1 ? '' : 's') + '</span></span>' +
+          '<span class="to">&rarr;</span>' +
+          '<span class="side"><img src="' + thingIcon(o.id) + '" alt="">' +
+            '<span class="qty">' + (o.n > 1 ? o.n + ' ' : '') + thingName(o.id) + '</span></span>' +
+          '<span class="left">' + o.note + '</span>';
+      }
+      b.disabled = !Store.affordable(o);
+      b.addEventListener('click', () => {
+        if (!Store.deal(o, this)) return;
+        Sound.place();
+        this.updateHotbarUI();
+        this.refreshStore();
+      });
+      list.appendChild(b);
+    }
+  },
+
   openShop() {
     this.shopOpen = true;
     document.getElementById('shop').classList.add('open');
     document.exitPointerLock();
+    document.getElementById('menu').classList.add('hidden');   // never behind a window
     if (this.dragLook) this.paused = true;
     this.refreshShop();
     Sound.animal('hmm', 1);
@@ -475,7 +620,10 @@ const Game = {
     document.getElementById('shop').classList.remove('open');
     if (this.dragLook) { this.paused = false; return; }
     const p = this.canvas.requestPointerLock();
-    if (p && p.catch) p.catch(() => {});
+    if (p && p.catch) p.catch(() => this.enterDragLook());
+    setTimeout(() => {
+      if (document.pointerLockElement !== this.canvas && !this.panelOpen()) this.enterDragLook();
+    }, 400);
   },
   refreshShop() {
     if (!this.shopOpen) return;
@@ -580,6 +728,7 @@ const Game = {
       BedWars.placed.delete(BedWars.key(hit.x, hit.y, hit.z));
     }
     Sound.dig(hit.id);
+    Deep.stir(this, BLOCKS[hit.id].sensor ? 30 : 10);     // a sensor screams when you break it
     this.world.setBlock(hit.x, hit.y, hit.z, 0);
 
     // what you walk away with depends on the tool in your hand
@@ -591,7 +740,9 @@ const Game = {
       this.toast('That needs ' + TIER_NAMES[needed] + ' to collect');
     } else if (drop) {
       // gravel sometimes gives up a piece of flint instead
-      const gives = hit.id === B.GRAVEL && Math.random() < 0.2 ? I.FLINT : drop;
+      const leafy = hit.id === B.LEAVES || hit.id === B.BIRCH_LEAVES || hit.id === B.SPRUCE_LEAVES;
+      const gives = hit.id === B.GRAVEL && Math.random() < 0.2 ? I.FLINT
+        : (leafy && Math.random() < 0.06 ? I.APPLE : drop);
       const n = gives === drop && tool && bestTool(hit.id) === tool.tool ? 2 : 1;
       Drops.spawn(this.world, hit.x + 0.5, hit.y + 0.4, hit.z + 0.5, gives, n, 0.5);
     }
@@ -624,11 +775,22 @@ const Game = {
         if (BLOCKS[id].door) { this.toggleDoor(hit); return; }
         if (id === B.BED_HEAD || id === B.BED_FOOT) { this.useBed(hit); return; }
         if (id === B.FURNACE) { this.openFurnace(); return; }
+        if (id === B.PRINTER) { this.openPrinter(hit); return; }
+        if (BLOCKS[id].tv !== undefined) { this.switchTv(hit); return; }
+        if (BLOCKS[id].explosive) { Boom.prime(this, hit.x, hit.y, hit.z); return; }
+        if (BLOCKS[id].shop) { this.openStore(); return; }
       }
     }
 
     const held = this.hotbar[this.slot];
-    if (isItem(held)) { if (!fromRepeat) this.useItem(held); return; }
+    if (isItem(held)) {
+      const hd = itemDef(held);
+      // an automatic weapon keeps going while the button is down; everything else
+      // waits for you to click again
+      if (hd && hd.gun && (!fromRepeat || GUNS[hd.gun].auto)) { Guns.fire(this, hd.gun); return; }
+      if (!fromRepeat) this.useItem(held);
+      return;
+    }
     if (held && this.bridging()) { this.bridgeAssist(held); return; }
     // Aiming out into open air: lay the next plank of a bridge instead of nothing.
     if (!hit) { if (held) this.bridgeAssist(held); return; }
@@ -639,6 +801,41 @@ const Game = {
     const id = this.hotbar[this.slot];
     if (!id) return;
     if (isSolid(id) && this.player.intersectsBlock(x, y, z)) return;
+    if (BLOCKS[id].ladder) {                       // hung on the wall you clicked
+      const side = hit.normal[2] < 0 ? 0 : hit.normal[0] > 0 ? 1 : hit.normal[2] > 0 ? 2 : hit.normal[0] < 0 ? 3 : -1;
+      if (side < 0) { this.toast('A ladder needs a wall'); return; }
+      if (this.survivalRules() && Inventory.count(id) <= 0) { this.toast('You have no ladders left'); return; }
+      if (this.world.setBlock(x, y, z, BLOCKS[id].turns[side])) {
+        BedWars.notePlaced(x, y, z);
+        Sound.place();
+        if (this.survivalRules()) { Inventory.take(id, 1); this.updateHotbarUI(); }
+      }
+      return;
+    }
+    if (BLOCKS[id].stairs) {                       // laid facing the way you are looking
+      const facing = BLOCKS[id].turns;
+      const turn = ((Math.round(this.player.yaw / (Math.PI / 2)) % 4) + 4) % 4;
+      if (this.survivalRules() && Inventory.count(id) <= 0) { this.toast('You have no stairs left'); return; }
+      if (this.world.setBlock(x, y, z, facing[turn])) {
+        BedWars.notePlaced(x, y, z);
+        Sound.place();
+        if (this.survivalRules()) { Inventory.take(id, 1); this.updateHotbarUI(); }
+      }
+      return;
+    }
+    if (BLOCKS[id].torch) {
+      const onFloor = hit.normal[1] === 1;
+      const onWall = hit.normal[0] !== 0 || hit.normal[2] !== 0;
+      if (!onFloor && !onWall) { this.toast('A torch will not hang from that'); return; }
+      if (!isSolid(hit.id)) { this.toast('A torch needs something solid to sit on'); return; }
+      if (this.survivalRules() && Inventory.count(id) <= 0) { this.toast('You have no torches left'); return; }
+      if (this.world.setBlock(x, y, z, onFloor ? B.TORCH : B.TORCH_WALL)) {
+        BedWars.notePlaced(x, y, z);
+        Sound.place();
+        if (this.survivalRules()) { Inventory.take(id, 1); this.updateHotbarUI(); }
+      }
+      return;
+    }
     if (this.survivalRules() && Inventory.count(id) <= 0) {
       this.toast('You have no ' + thingName(id) + ' left');
       return;
@@ -654,8 +851,18 @@ const Game = {
     }
     if (this.world.setBlock(x, y, z, id)) {
       BedWars.notePlaced(x, y, z);
+      if (isWaterBlock(id) && Portal.lightTime(this.world, x, y, z)) {
+        Sound.burst({ dur: 0.9, freq: 520, gain: 0.4, sweep: 3 });
+        this.toast('The water shivers — something very old is on the other side');
+      }
+      if (isLavaBlock(id) && Portal.lightFuture(this.world, x, y, z)) {
+        Sound.burst({ dur: 1.1, freq: 260, gain: 0.45, sweep: 4 });
+        this.toast('The lava tears open — something very late is on the other side');
+      }
       if (id === B.CHEST) this.world.chests.set(x + ',' + y + ',' + z, []);
       Sound.place();
+      Deep.stir(this, 6);
+      Hacker.tryOpen(this, x, y, z);        // did that finish the square?
       if (this.survivalRules()) { Inventory.take(id, 1); this.updateHotbarUI(); }
     }
   },
@@ -784,10 +991,73 @@ const Game = {
     Sound.burst({ dur: 0.3, freq: 300, gain: 0.25, sweep: 0.5 });
   },
 
+  // A television has four states and a button: off, colour bars, a view, and snow.
+  switchTv(hit) {
+    const chans = [B.TV, B.TV_BARS, B.TV_VIEW, B.TV_STATIC];
+    const next = chans[(chans.indexOf(hit.id) + 1) % chans.length];
+    this.world.setBlock(hit.x, hit.y, hit.z, next);
+    Sound.burst({ dur: 0.07, freq: 900, gain: 0.22, sweep: 1.4 });
+    this.toast(next === B.TV ? 'Television off' : 'Channel ' + BLOCKS[next].tv);
+  },
+
+  openPrinter(hit) {
+    this.printerAt = hit;
+    document.getElementById('printer').classList.add('open');
+    document.exitPointerLock();
+    document.getElementById('menu').classList.add('hidden');   // never behind a window
+    if (this.dragLook) this.paused = true;
+    this.refreshPrinter();
+    Sound.burst({ dur: 0.2, freq: 520, gain: 0.25, sweep: 0.7 });
+  },
+  closePrinter() {
+    this.printerAt = null;
+    document.getElementById('printer').classList.remove('open');
+    if (this.dragLook) { this.paused = false; return; }
+    const p = this.canvas.requestPointerLock();
+    if (p && p.catch) p.catch(() => this.enterDragLook());
+    setTimeout(() => {
+      if (document.pointerLockElement !== this.canvas && !this.panelOpen()) this.enterDragLook();
+    }, 400);
+  },
+  refreshPrinter() {
+    const at = this.printerAt;
+    if (!at) return;
+    const spot = [at.x, at.y, at.z];
+    document.getElementById('printer-note').innerHTML = this.survivalRules()
+      ? 'It uses the blocks the thing is made of, out of your own bag.'
+      : 'Creative: prints cost nothing.';
+    const list = document.getElementById('printer-list');
+    list.innerHTML = '';
+    for (const model of Printer.models()) {
+      const cost = [...Printer.cost(model)].map(([id, n]) => n + ' × ' + thingName(id)).join(', ');
+      const short = this.survivalRules() ? Printer.missing(model) : [];
+      const room = Printer.room(this.world, spot, model);
+      const b = document.createElement('button');
+      b.className = 'deal';
+      b.innerHTML =
+        '<span class="side"><img src="' + thingIcon(model.parts[0][3]) + '" alt="">' +
+          '<span class="qty">' + model.name + '</span></span>' +
+        '<span class="to">&rarr;</span>' +
+        '<span class="side"><span class="qty">' + model.blurb + '<br>' + cost + '</span></span>' +
+        '<span class="left">' + (!room ? 'no room' : short.length ? 'short' : 'print') + '</span>';
+      b.disabled = !room || short.length > 0;
+      b.addEventListener('click', () => {
+        const res = Printer.print(this, model, spot);
+        if (res !== true) { this.toast(res); return; }
+        Sound.place();
+        this.toast('Printed a ' + model.name.toLowerCase());
+        this.updateHotbarUI();
+        this.refreshPrinter();
+      });
+      list.appendChild(b);
+    }
+  },
+
   openFurnace() {
     this.furnaceOpen = true;
     document.getElementById('furnace').classList.add('open');
     document.exitPointerLock();
+    document.getElementById('menu').classList.add('hidden');   // never behind a window
     if (this.dragLook) this.paused = true;
     this.refreshFurnace();
   },
@@ -796,7 +1066,10 @@ const Game = {
     document.getElementById('furnace').classList.remove('open');
     if (this.dragLook) { this.paused = false; return; }
     const p = this.canvas.requestPointerLock();
-    if (p && p.catch) p.catch(() => {});
+    if (p && p.catch) p.catch(() => this.enterDragLook());
+    setTimeout(() => {
+      if (document.pointerLockElement !== this.canvas && !this.panelOpen()) this.enterDragLook();
+    }, 400);
   },
   refreshFurnace() {
     const fuel = currentFuel();
@@ -837,6 +1110,38 @@ const Game = {
     if (!stacks) {
       stacks = [];
       const rnd = mulberry32((hash3(hit.x, hit.y, hit.z, this.world.seed) * 4294967296) | 0);
+      if (this.dimension === 'future') {
+        stacks = Future.loot(this.world, key, rnd);
+        this.world.chests.set(key, stacks);
+        return stacks;
+      }
+      if (this.dimension === 'sea') {
+        // the two chests behind the throne are the ones worth swimming for
+        const palace = Sea.palace(this.world, Math.floor(hit.x / SEA_CITY), Math.floor(hit.z / SEA_CITY));
+        const inPalace = !!(palace && Math.abs(palace.x - hit.x) <= palace.r && Math.abs(palace.z - hit.z) <= palace.r);
+        stacks = Sea.loot(rnd, inPalace);
+        this.world.chests.set(key, stacks);
+        return stacks;
+      }
+      if (this.dimension === 'hacker') {
+        stacks = Hacker.loot(rnd);
+        this.world.chests.set(key, stacks);
+        return stacks;
+      }
+      if (this.dimension === 'deep') {
+        stacks = Deep.loot(rnd, false);
+        this.world.chests.set(key, stacks);
+        return stacks;
+      }
+      // An Ancient City chest. The first one anybody opens in a given city has
+      // the heart in it, because a city with no heart in it is a dead end.
+      const city = Deep.cityHeart(this.world, hit.x, hit.y, hit.z);
+      if (city) {
+        stacks = Deep.loot(rnd, true);
+        if (city.heart) stacks.unshift([I.HEART_OF_THE_DEEP, 1]);
+        this.world.chests.set(key, stacks);
+        return stacks;
+      }
       const table = [
         [I.IRON_INGOT, 1, 3], [I.EMERALD, 1, 2], [I.LEATHER, 1, 3], [I.FLINT, 1, 2],
         [I.STICK, 2, 6], [B.PLANKS, 4, 10], [I.BEEF, 1, 3], [B.COAL_ORE, 2, 5], [I.GOLD_INGOT, 1, 1],
@@ -856,6 +1161,7 @@ const Game = {
     this.chestStacks = this.chestContents(hit);
     document.getElementById('chest').classList.add('open');
     document.exitPointerLock();
+    document.getElementById('menu').classList.add('hidden');   // never behind a window
     if (this.dragLook) this.paused = true;
     this.refreshChest();
     Sound.burst({ dur: 0.18, freq: 620, gain: 0.3, sweep: 0.5 });
@@ -865,7 +1171,10 @@ const Game = {
     document.getElementById('chest').classList.remove('open');
     if (this.dragLook) { this.paused = false; return; }
     const p = this.canvas.requestPointerLock();
-    if (p && p.catch) p.catch(() => {});
+    if (p && p.catch) p.catch(() => this.enterDragLook());
+    setTimeout(() => {
+      if (document.pointerLockElement !== this.canvas && !this.panelOpen()) this.enterDragLook();
+    }, 400);
   },
   refreshChest() {
     const stacks = this.chestStacks || [];
@@ -899,11 +1208,146 @@ const Game = {
   // Food heals; anything else you are holding just gets a swing.
   useItem(id) {
     const def = itemDef(id);
+    if (def && def.spawnEgg) {
+      const hit = this.player.raycast();
+      if (!hit) { this.toast('Point at the ground first'); return; }
+      const [x, y, z] = hit.place;
+      if (this.survivalRules() && !Inventory.take(id, 1)) { this.toast('You have none left'); return; }
+      const mob = new Mob(def.spawnEgg, x + 0.5, y, z + 0.5, Math.random() * Math.PI * 2);
+      Animals.list.push(mob);
+      Sound.animal(mob.def.call, 1);
+      this.toast('Out comes a ' + mob.def.label.toLowerCase());
+      this.hotbarCheck();
+      return;
+    }
+    if (def && def.bucket) {
+      const hit = this.player.raycast();
+      if (def.bucket === 'empty') {
+        // The raycast goes straight through water, so walk the line ourselves and
+        // take the first liquid it passes into.
+        const o = this.player.eye, d = this.player.dir;
+        let found = null;
+        for (let t = 0; t <= this.player.reach && !found; t += 0.2) {
+          const cx = Math.floor(o[0] + d[0] * t), cy = Math.floor(o[1] + d[1] * t), cz = Math.floor(o[2] + d[2] * t);
+          const there = this.world.getBlock(cx, cy, cz);
+          if (isLiquid(there)) found = [cx, cy, cz];
+          else if (isSolid(there)) break;
+        }
+        if (!found) { this.toast('Point at water or lava'); return; }
+        const fluid = BLOCKS[this.world.getBlock(found[0], found[1], found[2])].fluid;
+        this.world.setBlock(found[0], found[1], found[2], 0);
+        Inventory.take(id, 1);
+        Inventory.add(fluid === 'lava' ? I.LAVA_BUCKET : I.WATER_BUCKET, 1);
+        this.toast('Filled the bucket with ' + fluid);
+      } else {
+        if (!hit) { this.toast('Point where it should go'); return; }
+        const [px, py, pz] = hit.place;
+        this.world.setBlock(px, py, pz, def.bucket === 'lava' ? B.LAVA : B.WATER);
+        Inventory.take(id, 1);
+        Inventory.add(I.BUCKET, 1);
+        this.toast('Poured out the ' + def.bucket);
+        if (def.bucket === 'water' && Portal.lightTime(this.world, px, py, pz)) {
+          this.toast('The water shivers — something very old is on the other side');
+        }
+        if (def.bucket === 'lava' && Portal.lightFuture(this.world, px, py, pz)) {
+          this.toast('The lava tears open — something very late is on the other side');
+        }
+      }
+      Sound.splash();
+      this.hotbarCheck();
+      return;
+    }
+    if (def && def.bow) {
+      if (this.survivalRules() && !Inventory.take(I.ARROW, 1)) { this.toast('You have no arrows'); return; }
+      Thrown.shoot(this.world, this.player, I.ARROW);
+      Sound.burst({ dur: 0.14, freq: 1400, gain: 0.25, sweep: 0.5 });
+      this.hotbarCheck();
+      return;
+    }
     if (def && def.pearl) {
       if (!Inventory.take(id, 1)) return;
       Thrown.throwPearl(this.world, this.player, id);
       this.hotbarCheck();
       Sound.burst({ dur: 0.12, freq: 900, gain: 0.25, sweep: 1.6 });
+      return;
+    }
+    // The heart goes into the empty middle of a reinforced frame, and stays there.
+    if (def && def.deepKey) {
+      // You can see straight through an unlit frame, so a raycast alone is no
+      // use: walk the line you are looking down and try to open every gap in it.
+      const o = this.player.eye, d = this.player.dir;
+      let opened = false, sawFrame = false;
+      const tried = new Set();
+      for (let t = 0; t <= this.player.reach + 1 && !opened; t += 0.2) {
+        const x = Math.floor(o[0] + d[0] * t), y = Math.floor(o[1] + d[1] * t), z = Math.floor(o[2] + d[2] * t);
+        const key = x + ',' + y + ',' + z;
+        if (tried.has(key)) continue;
+        tried.add(key);
+        const there = this.world.getBlock(x, y, z);
+        if (there === B.REINFORCED_DEEPSLATE) { sawFrame = true; continue; }
+        if (there) continue;
+        if (Portal.lightDeep(this.world, x, y, z)) opened = true;
+      }
+      if (!opened) {
+        this.toast(sawFrame ? 'The frame is the wrong shape — two across and three high'
+                            : 'That needs a frame of reinforced deepslate around it');
+        return;
+      }
+      if (this.survivalRules()) Inventory.take(id, 1);
+      this.hotbarCheck();
+      Sound.burst({ dur: 1.4, freq: 80, gain: 0.45, sweep: 6 });
+      this.toast('The frame drinks the heart — the floor of the world opens');
+      return;
+    }
+    // The Sonic Cannon. It fires a line rather than a projectile, hits everything
+    // standing in it, and is the single loudest thing you can do down there.
+    if (def && def.gun) { Guns.fire(this, def.gun); return; }
+
+    // A bottle: fill it at any water, and drink it anywhere.
+    if (def && def.bottle === 'empty') {
+      const o = this.player.eye, d = this.player.dir;
+      let found = null;
+      for (let t = 0; t <= this.player.reach && !found; t += 0.2) {
+        const cx = Math.floor(o[0] + d[0] * t), cy = Math.floor(o[1] + d[1] * t), cz = Math.floor(o[2] + d[2] * t);
+        const there = this.world.getBlock(cx, cy, cz);
+        if (isWaterBlock(there)) found = [cx, cy, cz];
+        else if (isSolid(there)) break;
+      }
+      if (!found) { this.toast('Point at some water'); return; }
+      if (!Inventory.take(id, 1)) return;
+      Inventory.add(I.WATER_BOTTLE, 1);
+      this.hotbarStow(I.WATER_BOTTLE);
+      this.hotbarCheck();
+      Sound.splash();
+      this.toast('Filled the bottle');
+      return;
+    }
+
+    // A stick with somebody else's client on it. Thirty seconds of flying, in a
+    // mode that is not supposed to have any, and then it burns out.
+    if (def && def.trident) {
+      if (this.survivalRules() && !Inventory.take(id, 1)) { this.toast('You have none left'); return; }
+      Thrown.hurl(this.world, this.player, id);
+      this.hotbarCheck();
+      Sound.burst({ dur: 0.2, freq: 700, gain: 0.3, sweep: 1.2 });
+      return;
+    }
+    if (def && def.hack) {
+      if (this.survivalRules() && !Inventory.take(id, 1)) { this.toast('You have none left'); return; }
+      this.player.flying = true;
+      this.hackFlight = 30;
+      this.hotbarCheck();
+      Sound.burst({ dur: 0.5, freq: 1700, gain: 0.35, sweep: 3 });
+      this.toast('Flight enabled — 30 seconds before the anticheat catches up');
+      return;
+    }
+    if (def && def.sonic) {
+      if (this.survivalRules() && !Inventory.take(I.ECHO_SHARD, 1)) {
+        this.toast('The cannon is out of echo — it needs a shard');
+        return;
+      }
+      this.fireSonic();
+      this.hotbarCheck();
       return;
     }
     if (def && def.eye) {
@@ -929,13 +1373,59 @@ const Game = {
       }
       return;
     }
-    if (!def || !def.food) return;
-    if (this.player.hp >= this.player.maxHp) { this.toast('Not hungry'); return; }
+    if (!def || (!def.food && !def.drink)) return;
+    const p = this.player;
+    const full = (!def.food || p.food >= p.maxFood) && (!def.drink || p.water >= p.maxWater);
+    if (full && p.hp >= p.maxHp) { this.toast(def.drink && !def.food ? 'Not thirsty' : 'Not hungry'); return; }
     if (!Inventory.take(id, 1)) { this.toast('You have none left'); return; }
-    this.player.heal(def.food);
+    if (def.food) p.food = Math.min(p.maxFood, p.food + def.food);
+    if (def.drink) p.water = Math.min(p.maxWater, p.water + def.drink);
+    if (def.bottle === 'water') { Inventory.add(I.BOTTLE, 1); this.hotbarStow(I.BOTTLE); }
     this.hotbarCheck();
-    Sound.burst({ dur: 0.2, freq: 300, gain: 0.3, sweep: 0.6 });
-    this.toast('Ate ' + def.name);
+    this._hudFood = null;
+    Sound.burst({ dur: 0.2, freq: def.drink && !def.food ? 520 : 300, gain: 0.3, sweep: 0.6 });
+    this.toast((def.drink && !def.food ? 'Drank ' : 'Ate ') + def.name);
+  },
+
+  // A shout along the line you are looking down: everything within half a block
+  // of it takes the hit, and the noise carries a very long way.
+  fireSonic() {
+    const p = this.player, o = p.eye, d = p.dir;
+    let hits = 0;
+    for (const m of Animals.list.slice()) {
+      if (m.dead) continue;
+      const vx = m.x - o[0], vy = (m.y + m.def.height * 0.5) - o[1], vz = m.z - o[2];
+      const t = vx * d[0] + vy * d[1] + vz * d[2];
+      if (t < 0 || t > 32) continue;
+      const px = vx - d[0] * t, py = vy - d[1] * t, pz = vz - d[2] * t;
+      if (Math.hypot(px, py, pz) > Math.max(0.9, m.def.width)) continue;
+      Animals.punch(m, [d[0], d[1], d[2]], 11, this.world);
+      hits++;
+    }
+    Sound.burst({ dur: 0.55, freq: 140, gain: 0.45, sweep: 4 });
+    Deep.stir(this, 45);
+    this.toast(hits ? 'The shout tears through ' + hits + (hits === 1 ? ' of them' : ' of them') : 'The shout goes out into the dark');
+  },
+
+  // The Solytra's second trick: a kinetic shove that puts you back in the air
+  // without needing anything to burn.
+  solytraBoost() {
+    const p = this.player;
+    if (itemDef(Equipment.chest || 0) !== undefined && Equipment.chest && itemDef(Equipment.chest).glide) {
+      if ((this.boostCd || 0) > 0) { this.toast('Solytra — ' + this.boostCd.toFixed(1) + 's'); return true; }
+      this.boostCd = 4;
+      p.vel[1] = 15;
+      p.vel[0] += p.dir[0] * 6;
+      p.vel[2] += p.dir[2] * 6;
+      p.onGround = false;
+      p.fallFrom = null;
+      p.noFall = true;
+      p.gliding = true;
+      Sound.burst({ dur: 0.4, freq: 900, gain: 0.35, sweep: 2.4 });
+      Deep.stir(this, 14);
+      return true;
+    }
+    return false;
   },
 
   // A picked-up thing takes the first empty hotbar slot, so it is ready to use
@@ -1060,6 +1550,8 @@ const Game = {
       }
       Fluid.update(dt, this.world);
       Thrown.update(dt, this.world, p => {
+        if (p.arrow) { Drops.spawn(this.world, p.x, p.y, p.z, I.ARROW, 1, 0.2); return; }
+        if (p.hitId === B.PUMPKIN_RED) { this.travelPumpkin(); return; }
         // you go where the pearl went
         const px = Math.floor(p.x), py = Math.floor(p.y), pz = Math.floor(p.z);
         let y = py;
@@ -1081,12 +1573,28 @@ const Game = {
       });
       BedWars.update(dt, this);
       Hunger.update(dt, this);
+      Deep.update(dt, this);
+      Guns.update(dt, this);
+      Boom.update(dt, this);
+      if (this.dimension === 'overworld') this.overPos = this.player.pos;   // where home is
+      if (this.hackFlight > 0) {
+        this.hackFlight -= dt;
+        if (this.hackFlight <= 0 && this.mode !== 'creative') {
+          this.hackFlight = 0;
+          this.player.flying = false;
+          this.toast('The client is patched out from under you');
+        }
+      }
+      this.boostCd = Math.max(0, (this.boostCd || 0) - dt);
       this.checkDeath();
       this.updatePortal(dt);
       if (this.player.inWater !== wasInWater) Sound.splash();
       this.stepAudio(dt, res);
 
-      const locked = document.pointerLockElement === this.canvas;
+      // A held mouse button counts in drag-look too: without pointer lock you
+      // still have to be able to hold the button down and mine through a block.
+      const locked = document.pointerLockElement === this.canvas || this.dragLook;
+      this.holdCheck();
       const breaking = (this.mouse.left && locked) || this.keyBreak;
       if (breaking && this.mode === 'creative') {
         this.breakTimer -= dt;
@@ -1145,6 +1653,56 @@ const Game = {
       ambient = 0.22;
       day = 0.5;
       stars = 0.7;
+    } else if (this.dimension === 'future') {
+      zenith = [0.10, 0.11, 0.12];
+      horizon = [0.28, 0.27, 0.24];
+      fogColor = [0.22, 0.22, 0.20];
+      fogRange = [this.viewDist * CX * 0.25, this.viewDist * CX * 0.8];   // smog
+      ambient = 0.13;
+      day = 0.45;
+      stars = 0;
+    } else if (this.dimension === 'halloween') {
+      zenith = [0.03, 0.02, 0.04];
+      horizon = [0.16, 0.07, 0.02];
+      fogColor = [0.10, 0.045, 0.02];
+      fogRange = [this.viewDist * CX * 0.35, this.viewDist * CX * 0.9];
+      ambient = 0.16;                 // the flesh of the thing glows a little
+      day = 0.35;
+      stars = 0;
+    } else if (this.dimension === 'dinos') {
+      zenith = mix([0.05, 0.07, 0.12], [0.36, 0.55, 0.72], dayN);
+      horizon = mix([0.10, 0.10, 0.12], [0.86, 0.79, 0.58], dayN);
+      fogColor = mix(horizon, zenith, 0.3);
+      fogRange = [this.viewDist * CX * 0.30, this.viewDist * CX * 0.85];   // thick prehistoric haze
+      ambient = 0.10;
+    } else if (this.dimension === 'sea') {
+      // Everything is seen through a great deal of water, so everything is blue.
+      zenith = [0.03, 0.16, 0.30];
+      horizon = [0.05, 0.28, 0.42];
+      fogColor = [0.04, 0.24, 0.38];
+      fogRange = [this.viewDist * CX * 0.18, this.viewDist * CX * 0.7];
+      ambient = 0.22;
+      day = 0.5;
+      stars = 0;
+    } else if (this.dimension === 'hacker') {
+      // Black, with the green of a terminal bleeding into the bottom of it.
+      zenith = [0.01, 0.02, 0.02];
+      horizon = [0.02, 0.10, 0.05];
+      fogColor = [0.02, 0.07, 0.04];
+      fogRange = [this.viewDist * CX * 0.55, this.viewDist * CX * 1.1];
+      ambient = 0.22;
+      day = 0.45;
+      stars = 0;
+    } else if (this.dimension === 'deep') {
+      // No sky at all: what light there is comes off the sculk and the crystals,
+      // and the fog closes in hard, which is most of what makes it frightening.
+      zenith = [0.01, 0.02, 0.03];
+      horizon = [0.02, 0.05, 0.06];
+      fogColor = [0.015, 0.035, 0.045];
+      fogRange = [this.viewDist * CX * 0.14, this.viewDist * CX * 0.62];
+      ambient = 0.085;
+      day = 0.2;
+      stars = 0;
     } else if (this.dimension === 'nether') {
       zenith = [0.09, 0.02, 0.02];
       horizon = [0.34, 0.08, 0.05];
@@ -1154,8 +1712,19 @@ const Game = {
       day = 0.35;
       stars = 0;
     }
+    // A torch in your hand cannot light the world properly — the light in this
+    // engine is baked into the blocks — but carrying one should still help you see.
+    const inHand = this.hotbar[this.slot];
+    if (inHand && !isItem(inHand) && BLOCKS[inHand].torch) {
+      ambient = Math.min(1, ambient + 0.16);
+      day = Math.max(day, 0.5);
+    }
+
     const underwater = p.headInWater;
-    if (underwater) { fogColor = [0.08, 0.26, 0.45]; fogRange = [0.5, 20]; }
+    // Everything in Poseidon's realm is underwater, so the usual "your head has
+    // gone under" fog would leave you looking at nothing but blue all day.
+    if (underwater && this.dimension === 'sea') { fogColor = [0.05, 0.24, 0.40]; fogRange = [6, this.viewDist * CX * 0.75]; }
+    else if (underwater) { fogColor = [0.08, 0.26, 0.45]; fogRange = [0.5, 20]; }
     if (p.inLava) { fogColor = [0.55, 0.16, 0.03]; fogRange = [0.2, 3]; }
 
     const hit = this.ready ? p.raycast() : null;
@@ -1258,7 +1827,7 @@ const Game = {
     const d = this.stackDrag;
     if (!d) return;
     if (!d.live) {
-      if (Math.hypot(e.clientX - d.x0, e.clientY - d.y0) < 6) return;
+      if (Math.hypot(e.clientX - d.x0, e.clientY - d.y0) < 16) return;   // a wobble is still a click
       d.live = true;
       d.ghost = document.createElement('div');
       d.ghost.className = 'drag-ghost';
@@ -1392,6 +1961,7 @@ const Game = {
     document.getElementById('inventory').classList.add('open');
     this.inventoryOpen = true;
     document.exitPointerLock();
+    document.getElementById('menu').classList.add('hidden');   // never behind a window
     if (this.dragLook) this.paused = true;
     this.refreshCraft();
   },
@@ -1401,7 +1971,10 @@ const Game = {
     this.inventoryOpen = false;
     if (this.dragLook) { this.paused = false; return; }
     const p = this.canvas.requestPointerLock();
-    if (p && p.catch) p.catch(() => {});
+    if (p && p.catch) p.catch(() => this.enterDragLook());
+    setTimeout(() => {
+      if (document.pointerLockElement !== this.canvas && !this.panelOpen()) this.enterDragLook();
+    }, 400);
   },
 
   toggleInventory() {
@@ -1584,8 +2157,22 @@ const Game = {
     const hp = Math.max(0, Math.ceil(p.hp));
     const armour = Equipment.points();
     const air = p.headInWater ? Math.ceil(p.air) : -1;
-    if (hp === this._hudHp && armour === this._hudArmour && air === this._hudAir) return;
+    const food = Math.round(p.food * 5), water = Math.round(p.water * 5);
+    if (hp === this._hudHp && armour === this._hudArmour && air === this._hudAir
+        && food === this._hudFood && water === this._hudWater) return;
     this._hudHp = hp; this._hudArmour = armour; this._hudAir = air;
+    this._hudFood = food; this._hudWater = water;
+
+    const needs = document.getElementById('needs');
+    if (needs) {
+      needs.style.display = this.mode === 'creative' ? 'none' : 'flex';
+      const fb = document.getElementById('foodbar'), wb = document.getElementById('waterbar');
+      fb.style.setProperty('--v', (p.food / p.maxFood * 100).toFixed(0) + '%');
+      wb.style.setProperty('--v', (p.water / p.maxWater * 100).toFixed(0) + '%');
+      fb.classList.toggle('low', p.food <= 6);
+      wb.classList.toggle('low', p.water <= 6);
+      fb.title = 'Food'; wb.title = 'Water';
+    }
 
     const hearts = document.getElementById('hearts');
     hearts.innerHTML = '';
@@ -1628,6 +2215,7 @@ const Game = {
     document.getElementById('trade-title').textContent = mob.def.label;
     document.getElementById('trading').classList.add('open');
     document.exitPointerLock();
+    document.getElementById('menu').classList.add('hidden');   // never behind a window
     if (this.dragLook) this.paused = true;
     this.refreshTrades();
     Sound.animal('hmm', 1);
@@ -1639,7 +2227,10 @@ const Game = {
     document.getElementById('trading').classList.remove('open');
     if (this.dragLook) { this.paused = false; return; }
     const p = this.canvas.requestPointerLock();
-    if (p && p.catch) p.catch(() => {});
+    if (p && p.catch) p.catch(() => this.enterDragLook());
+    setTimeout(() => {
+      if (document.pointerLockElement !== this.canvas && !this.panelOpen()) this.enterDragLook();
+    }, 400);
   },
 
   refreshTrades() {
@@ -1684,6 +2275,56 @@ const Game = {
       if (!this.portalArmed) return;
       this.portalTime = (this.portalTime || 0) + dt;
       if (this.portalTime > 1.1 && this.portalCooldown <= 0) this.travelEnd();
+      return;
+    }
+    const inSea = feet === B.SEA_PORTAL || head === B.SEA_PORTAL;
+    if (inSea) {
+      this.portalFx = Math.min(1, (this.portalFx || 0) + dt * 1.6);
+      const fx7 = document.getElementById('portalfx');
+      if (fx7) fx7.style.opacity = (this.portalFx * 0.55).toFixed(2);
+      if (!this.portalArmed) return;
+      this.portalTime = (this.portalTime || 0) + dt;
+      if (this.portalTime > 1.1 && this.portalCooldown <= 0) this.travelSea();
+      return;
+    }
+    const inHack = feet === B.HACK_PORTAL || head === B.HACK_PORTAL;
+    if (inHack) {
+      this.portalFx = Math.min(1, (this.portalFx || 0) + dt * 1.6);
+      const fx6 = document.getElementById('portalfx');
+      if (fx6) fx6.style.opacity = (this.portalFx * 0.55).toFixed(2);
+      if (!this.portalArmed) return;
+      this.portalTime = (this.portalTime || 0) + dt;
+      if (this.portalTime > 1.1 && this.portalCooldown <= 0) this.travelHacker();
+      return;
+    }
+    const inDeep = feet === B.DEEP_PORTAL || head === B.DEEP_PORTAL;
+    if (inDeep) {
+      this.portalFx = Math.min(1, (this.portalFx || 0) + dt * 1.6);
+      const fx5 = document.getElementById('portalfx');
+      if (fx5) fx5.style.opacity = (this.portalFx * 0.55).toFixed(2);
+      if (!this.portalArmed) return;
+      this.portalTime = (this.portalTime || 0) + dt;
+      if (this.portalTime > 1.1 && this.portalCooldown <= 0) this.travelDeep();
+      return;
+    }
+    const inRift = feet === B.FUTURE_PORTAL || head === B.FUTURE_PORTAL;
+    if (inRift) {
+      this.portalFx = Math.min(1, (this.portalFx || 0) + dt * 1.6);
+      const fx4 = document.getElementById('portalfx');
+      if (fx4) fx4.style.opacity = (this.portalFx * 0.55).toFixed(2);
+      if (!this.portalArmed) return;
+      this.portalTime = (this.portalTime || 0) + dt;
+      if (this.portalTime > 1.1 && this.portalCooldown <= 0) this.travelFuture();
+      return;
+    }
+    const inTime = feet === B.TIME_PORTAL || head === B.TIME_PORTAL;
+    if (inTime) {
+      this.portalFx = Math.min(1, (this.portalFx || 0) + dt * 1.6);
+      const fx3 = document.getElementById('portalfx');
+      if (fx3) fx3.style.opacity = (this.portalFx * 0.55).toFixed(2);
+      if (!this.portalArmed) return;
+      this.portalTime = (this.portalTime || 0) + dt;
+      if (this.portalTime > 1.1 && this.portalCooldown <= 0) this.travelTime();
       return;
     }
     this.portalFx = inside ? Math.min(1, (this.portalFx || 0) + dt * 1.6) : Math.max(0, (this.portalFx || 0) - dt * 3);
@@ -1746,6 +2387,214 @@ const Game = {
     }
     this.toast(toEnd ? 'The End' : 'Home');
     Sound.burst({ dur: 1.0, freq: 260, gain: 0.45, sweep: 4 });
+  },
+
+  // Down to Poseidon. You keep your breath in his water; that is his doing, not
+  // yours, and it stops the moment you leave.
+  travelSea() {
+    const going = this.dimension !== 'sea';
+    const target = going ? 'sea' : ((this.seaReturn && this.seaReturn.dimension) || 'overworld');
+    if (going) this.seaReturn = { dimension: this.dimension, pos: this.player.pos.slice() };
+    const world = this.worlds[target];
+    const tx = Math.floor(this.player.pos[0]), tz = Math.floor(this.player.pos[2]);
+    for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) {
+      if (!world.getChunk((tx >> 4) + dx, (tz >> 4) + dz)) world.generateChunk((tx >> 4) + dx, (tz >> 4) + dz);
+    }
+    let spot;
+    if (going) {
+      spot = Portal.findOrBuild(world, tx, tz, B.PRISMARINE, B.SEA_PORTAL);
+    } else {
+      spot = (this.seaReturn && this.seaReturn.pos.slice()) || [tx + 0.5, 80, tz + 0.5];
+    }
+    this.dimension = target;
+    this.world = world;
+    this.player.world = world;
+    this.player.pos = [spot[0], spot[1], spot[2]];
+    this.player.vel = [0, 0, 0];
+    this.player.fallFrom = null;
+    this.player.air = this.player.maxAir;
+    this.portalTime = 0;
+    this.portalArmed = false;
+    this.portalCooldown = 1;
+    this.lastChunk = null;
+    this.mining = null;
+    Animals.reset();
+    Drops.reset();
+    Thrown.reset();
+    if (going) Sea.seedGuard(world, this, tx, tz);
+    this.toast(going ? "Poseidon's realm — you can breathe down here" : 'Back on dry land');
+    Sound.burst({ dur: 1.4, freq: going ? 300 : 620, gain: 0.45, sweep: 4 });
+  },
+
+  // Through the breach, into whatever is left of the server.
+  travelHacker() {
+    const going = this.dimension !== 'hacker';
+    const target = going ? 'hacker' : ((this.hackReturn && this.hackReturn.dimension) || 'overworld');
+    if (going) this.hackReturn = { dimension: this.dimension, pos: this.player.pos.slice() };
+    const world = this.worlds[target];
+    let spot;
+    if (going) {
+      const tx = Math.floor(this.player.pos[0]), tz = Math.floor(this.player.pos[2]);
+      for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) {
+        if (!world.getChunk((tx >> 4) + dx, (tz >> 4) + dz)) world.generateChunk((tx >> 4) + dx, (tz >> 4) + dz);
+      }
+      spot = Hacker.arrival(world, tx, tz);
+      // and the way home, laid out in the floor where you land
+      const bx = Math.floor(spot[0]), bz = Math.floor(spot[2]) + 2;
+      for (const [dx, dz, letter] of Hacker.PATTERN) {
+        world.setBlock(bx + dx, HK_FLOOR, bz + dz, Hacker.want(letter));
+      }
+      world.setBlock(bx, HK_FLOOR, bz, B.HACK_PORTAL);
+    } else {
+      spot = (this.hackReturn && this.hackReturn.pos.slice()) || [0.5, 80, 0.5];
+      const hx = Math.floor(spot[0]), hz = Math.floor(spot[2]);
+      for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) {
+        if (!world.getChunk((hx >> 4) + dx, (hz >> 4) + dz)) world.generateChunk((hx >> 4) + dx, (hz >> 4) + dz);
+      }
+      spot[1] += 1;                          // step up out of the square, not into it
+    }
+    this.dimension = target;
+    this.world = world;
+    this.player.world = world;
+    this.player.pos = [spot[0], spot[1], spot[2]];
+    this.player.vel = [0, 0, 0];
+    this.player.fallFrom = null;
+    this.portalTime = 0;
+    this.portalArmed = false;
+    this.portalCooldown = 1;
+    this.lastChunk = null;
+    this.mining = null;
+    Animals.reset();
+    Drops.reset();
+    Thrown.reset();
+    this.toast(going ? 'Inside the server. Somebody has been in here.' : 'Logged back out');
+    Sound.burst({ dur: 1.2, freq: going ? 1800 : 700, gain: 0.45, sweep: 5 });
+  },
+
+  // Down past the deepslate. You come back out of the frame you went in by.
+  travelDeep() {
+    const going = this.dimension !== 'deep';
+    const target = going ? 'deep' : ((this.deepReturn && this.deepReturn.dimension) || 'overworld');
+    if (going) this.deepReturn = { dimension: this.dimension, pos: this.player.pos.slice() };
+    const world = this.worlds[target];
+    let tx = Math.floor(this.player.pos[0]), tz = Math.floor(this.player.pos[2]);
+    // Coming down, put the way home in a chamber with room to stand up in it,
+    // not wherever the frame upstairs happened to be.
+    if (going) {
+      const near = Deep.arrivalNear(world, tx, tz);
+      tx = Math.floor(near[0]); tz = Math.floor(near[2]);
+    }
+    for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) {
+      if (!world.getChunk((tx >> 4) + dx, (tz >> 4) + dz)) world.generateChunk((tx >> 4) + dx, (tz >> 4) + dz);
+    }
+    const spot = Portal.findOrBuild(world, tx, tz, B.REINFORCED_DEEPSLATE, B.DEEP_PORTAL);
+    this.dimension = target;
+    this.world = world;
+    this.player.world = world;
+    this.player.pos = [spot[0], spot[1], spot[2]];
+    this.player.vel = [0, 0, 0];
+    this.player.fallFrom = null;
+    this.portalTime = 0;
+    this.portalArmed = false;
+    this.portalCooldown = 1;
+    this.lastChunk = null;
+    this.mining = null;
+    Animals.reset();
+    Drops.reset();
+    Thrown.reset();
+    Deep.reset();
+    this.toast(going ? 'The Deep Lands — be quiet' : 'Back up into the light');
+    Sound.burst({ dur: 1.6, freq: going ? 70 : 500, gain: 0.45, sweep: 5 });
+  },
+
+  // Forward, into whatever is left of the place.
+  travelFuture() {
+    const going = this.dimension !== 'future';
+    const target = going ? 'future' : 'overworld';
+    const world = this.worlds[target];
+    const tx = Math.floor(this.player.pos[0]), tz = Math.floor(this.player.pos[2]);
+    for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) {
+      if (!world.getChunk((tx >> 4) + dx, (tz >> 4) + dz)) world.generateChunk((tx >> 4) + dx, (tz >> 4) + dz);
+    }
+    const spot = Portal.findOrBuild(world, tx, tz, B.DARKSTONE, B.FUTURE_PORTAL);
+    this.dimension = target;
+    this.world = world;
+    this.player.world = world;
+    this.player.pos = [spot[0], spot[1], spot[2]];
+    this.player.vel = [0, 0, 0];
+    this.player.fallFrom = null;
+    this.portalTime = 0;
+    this.portalArmed = false;
+    this.portalCooldown = 1;
+    this.lastChunk = null;
+    this.mining = null;
+    Animals.reset();
+    Drops.reset();
+    this.toast(going ? 'The city, long after' : 'Back to your own time');
+    Sound.burst({ dur: 1.2, freq: going ? 900 : 420, gain: 0.45, sweep: 0.2 });
+  },
+
+  // A pearl against those red eyes and you are inside the thing, in a world the
+  // shape of the pumpkin itself.
+  travelPumpkin() {
+    const going = this.dimension !== 'halloween';
+    const target = going ? 'halloween' : ((this.pumpkinReturn && this.pumpkinReturn.dimension) || 'overworld');
+    if (going) this.pumpkinReturn = { dimension: this.dimension, pos: this.player.pos.slice() };
+    const world = this.worlds[target];
+    let spot;
+    if (going) {
+      for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) {
+        if (!world.getChunk(dx, dz)) world.generateChunk(dx, dz);
+      }
+      spot = Halloween.arrival();
+    } else {
+      spot = (this.pumpkinReturn && this.pumpkinReturn.pos.slice()) || [0.5, 90, 0.5];
+      const hx = Math.floor(spot[0]), hz = Math.floor(spot[2]);
+      for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) {
+        if (!world.getChunk((hx >> 4) + dx, (hz >> 4) + dz)) world.generateChunk((hx >> 4) + dx, (hz >> 4) + dz);
+      }
+    }
+    this.dimension = target;
+    this.world = world;
+    this.player.world = world;
+    this.player.pos = spot.slice();
+    this.player.vel = [0, 0, 0];
+    this.player.fallFrom = null;
+    this.lastChunk = null;
+    this.mining = null;
+    Animals.reset();
+    Drops.reset();
+    Thrown.reset();
+    this.toast(going ? 'Inside the pumpkin' : 'Back outside');
+    Sound.burst({ dur: 1.1, freq: going ? 180 : 420, gain: 0.45, sweep: 4 });
+  },
+
+  // Through the water and out the other side, a hundred million years earlier.
+  travelTime() {
+    const toPast = this.dimension !== 'dinos';
+    const target = toPast ? 'dinos' : 'overworld';
+    const world = this.worlds[target];
+    const tx = Math.floor(this.player.pos[0]), tz = Math.floor(this.player.pos[2]);
+    for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) {
+      if (!world.getChunk((tx >> 4) + dx, (tz >> 4) + dz)) world.generateChunk((tx >> 4) + dx, (tz >> 4) + dz);
+    }
+    const spot = Portal.findOrBuild(world, tx, tz, B.GLOWSTONE, B.TIME_PORTAL);
+
+    this.dimension = target;
+    this.world = world;
+    this.player.world = world;
+    this.player.pos = [spot[0], spot[1], spot[2]];
+    this.player.vel = [0, 0, 0];
+    this.player.fallFrom = null;
+    this.portalTime = 0;
+    this.portalArmed = false;
+    this.portalCooldown = 1;
+    this.lastChunk = null;
+    this.mining = null;
+    Animals.reset();
+    Drops.reset();
+    this.toast(toPast ? 'The age of the dinosaurs' : 'Back to your own time');
+    Sound.burst({ dur: 1.2, freq: 220, gain: 0.45, sweep: 5 });
   },
 
   travelDimension() {
@@ -1811,6 +2660,9 @@ const Game = {
   },
 
   updateHUD(dt) {
+    Outfits.update(dt);
+    if (!this.paused && this.ready) Outfits.tick(this);
+    if (Outfits.cooldown > 0 || Outfits.ready) { Outfits.ready = 0; Outfits.refreshHud(); }
     this.updateBossBar();
     document.getElementById('underwater').classList.toggle('on', this.player.headInWater);
     this.updateVitals();
@@ -1854,8 +2706,12 @@ const Game = {
         inventory: Inventory.serialize(),
         netherEdits: [...this.worlds.nether.edits.entries()].slice(0, 60000),
         endEdits: [...this.worlds.end.edits.entries()].slice(0, 20000),
+        dinoEdits: [...this.worlds.dinos.edits.entries()].slice(0, 20000),
+        hallowEdits: [...this.worlds.halloween.edits.entries()].slice(0, 20000),
+        futureEdits: [...this.worlds.future.edits.entries()].slice(0, 20000),
         dragonSlain: !!this.worlds.end.dragonSlain,
         dimension: this.dimension,
+        overPos: (this.overPos || (this.dimension === 'overworld' ? this.player.pos : null) || [0, 80, 0]).slice(),
         chests: [...this.worlds.overworld.chests.entries()].slice(0, 4000),
         mode: this.mode,
         equipment: Equipment.serialize(),
@@ -1884,11 +2740,12 @@ function hashString(str) {
 // The creative catalogue, in a sensible order, and how it is grouped.
 const PALETTE_TABS = [
   ['all', 'Everything'], ['blocks', 'Blocks'], ['tools', 'Tools'], ['weapons', 'Swords'],
-  ['armour', 'Armour'], ['food', 'Food'], ['materials', 'Materials'],
+  ['armour', 'Armour'], ['food', 'Food'], ['materials', 'Materials'], ['eggs', 'Spawn eggs'],
 ];
 function thingCategory(id) {
   if (!isItem(id)) return 'blocks';
   const def = itemDef(id);
+  if (def.spawnEgg) return 'eggs';
   if (def.armour) return 'armour';
   if (def.tool) return 'tools';
   if (def.damage) return 'weapons';
@@ -1897,7 +2754,13 @@ function thingCategory(id) {
 }
 function catalogue() {
   const out = [];
-  for (let id = 1; id < BLOCKS.length; id++) { if (BLOCKS[id].flowing) continue; out.push(id); }
+  for (let id = 1; id < BLOCKS.length; id++) {
+    if (BLOCKS[id].flowing || BLOCKS[id].tv || id === B.TORCH_WALL) continue;
+    if (id === B.CRYSTAL_ROUSED || id === B.CRYSTAL_ALARMED) continue;   // one entry for the crystal
+    if (BLOCKS[id].stairs && id !== B.STAIRS_N) continue;      // one entry for all four ways round
+    out.push(id);
+  }
+  out.push(B.TV);
   for (let i = 0; i < ITEMS.length; i++) out.push(ITEM_BASE + i);
   return out;
 }

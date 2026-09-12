@@ -448,6 +448,28 @@ function buildTextures() {
     for (const x of [5, 8, 10]) t.px(x, 11, dark[0], dark[1], dark[2]);
     for (const x of [4, 11]) t.px(x, 9, dark[0], dark[1], dark[2]);
   });
+  const carved = (name, eye, mouth, glow) => paintTile(name, t => {
+    for (let x = 0; x < TILE; x++) {
+      const rib = x % 4 === 0 ? -26 : 0;
+      for (let y = 0; y < TILE; y++) {
+        const v = rib + (t.rnd() - 0.5) * 9;
+        t.px(x, y, 224 + v, 138 + v, 38 + v);
+      }
+    }
+    for (let i = 0; i < 4; i++) for (let k = 0; k <= i; k++) {        // two triangular eyes
+      t.px(3 + i, 4 + k, eye[0], eye[1], eye[2]);
+      t.px(12 - i, 4 + k, eye[0], eye[1], eye[2]);
+    }
+    for (let x = 3; x < 13; x++) t.px(x, 10, mouth[0], mouth[1], mouth[2]);   // a jagged grin
+    for (const x of [4, 6, 9, 11]) t.px(x, 11, mouth[0], mouth[1], mouth[2]);
+    for (const x of [5, 8, 10]) t.px(x, 9, mouth[0], mouth[1], mouth[2]);
+    if (glow) for (let i = 0; i < 10; i++) {
+      t.px(3 + ((t.rnd() * 10) | 0), 9 + ((t.rnd() * 3) | 0), glow[0], glow[1], glow[2]);
+    }
+  });
+  carved('pumpkin_red_face', [224, 40, 34], [120, 20, 18], [255, 120, 96]);
+  carved('pumpkin_lit_face', [255, 214, 96], [148, 74, 12], [255, 244, 176]);
+
   paintTile('pumpkin_top', t => { t.fill(198, 126, 40, 9); for (let y = 6; y < 10; y++) for (let x = 6; x < 10; x++) t.px(x, y, 122, 92, 44); });
 
   paintTile('mossy_cobblestone', t => {
@@ -465,6 +487,58 @@ function buildTextures() {
     }
   });
 
+  const crossTile = (name, draw) => paintTile(name, t => {
+    t.data.fill(0);
+    draw(t);
+  });
+  crossTile('flower_red', t => {
+    for (let y = 8; y < 15; y++) t.px(7, y, 62, 122, 54, 255);
+    for (const [x, y] of [[6, 10], [8, 11]]) t.px(x, y, 74, 138, 60, 255);
+    for (let y = 4; y < 8; y++) for (let x = 5; x < 10; x++) {
+      if ((x === 5 || x === 9) && (y === 4 || y === 7)) continue;
+      t.px(x, y, 206 + (t.rnd() - 0.5) * 20, 54, 48, 255);
+    }
+    t.px(7, 6, 242, 214, 96, 255);
+  });
+  crossTile('flower_yellow', t => {
+    for (let y = 8; y < 15; y++) t.px(8, y, 62, 122, 54, 255);
+    for (const [x, y] of [[7, 10], [9, 12]]) t.px(x, y, 74, 138, 60, 255);
+    for (let y = 4; y < 8; y++) for (let x = 6; x < 11; x++) {
+      if ((x === 6 || x === 10) && (y === 4 || y === 7)) continue;
+      t.px(x, y, 232 + (t.rnd() - 0.5) * 18, 206, 62, 255);
+    }
+    t.px(8, 6, 152, 110, 40, 255);
+  });
+  crossTile('tall_grass', t => {
+    for (let i = 0; i < 7; i++) {
+      const x = 3 + i * 1.6, h = 5 + ((t.rnd() * 6) | 0);
+      for (let k = 0; k < h; k++) {
+        const v = (t.rnd() - 0.5) * 24;
+        t.px(Math.round(x + k * 0.16), 15 - k, 74 + v, 142 + v, 58 + v, 255);
+      }
+    }
+  });
+  crossTile('ladder', t => {
+    for (const x of [3, 12]) for (let y = 0; y < TILE; y++) {
+      const v = (t.rnd() - 0.5) * 12;
+      t.px(x, y, 150 + v, 112 + v, 62 + v, 255);
+    }
+    for (let y = 1; y < TILE; y += 4) for (let x = 3; x <= 12; x++) {
+      const v = (t.rnd() - 0.5) * 10;
+      t.px(x, y, 132 + v, 96 + v, 52 + v, 255);
+    }
+  });
+
+  woolTile('wool_orange', [214, 126, 46]);
+  woolTile('wool_magenta', [186, 76, 190]);
+  woolTile('wool_lightblue', [92, 156, 216]);
+  woolTile('wool_lime', [126, 200, 62]);
+  woolTile('wool_pink', [226, 140, 170]);
+  woolTile('wool_grey', [76, 80, 86]);
+  woolTile('wool_lightgrey', [154, 158, 162]);
+  woolTile('wool_cyan', [46, 148, 156]);
+  woolTile('wool_purple', [122, 62, 174]);
+  woolTile('wool_brown', [110, 76, 46]);
   woolTile('wool_white', [232, 234, 234]);
   woolTile('wool_red', [162, 46, 42]);
   woolTile('wool_yellow', [232, 194, 60]);
@@ -530,6 +604,48 @@ function buildTextures() {
       for (let y = 0; y < 2; y++) for (let x = 0; x < 2; x++) t.px(cx + x, cy + y, 252, 214, 96);
     }
   });
+  paintTile('time_portal', t => {
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+      const d = Math.hypot(x - 7.5, y - 7.5);
+      const swirl = Math.sin(d * 1.7 - Math.atan2(y - 7.5, x - 7.5) * 3) * 34;
+      const v = (t.rnd() - 0.5) * 20;
+      t.px(x, y, 96 + swirl + v, 176 + swirl * 0.6 + v, 78 + v, 205);
+    }
+    for (let i = 0; i < 14; i++) t.px((t.rnd() * TILE) | 0, (t.rnd() * TILE) | 0, 238, 250, 190, 235);
+  });
+
+  paintTile('future_portal', t => {
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+      const d = Math.hypot(x - 7.5, y - 7.5);
+      const band = Math.sin(d * 2.2 - Math.atan2(y - 7.5, x - 7.5)) * 40;
+      const v = (t.rnd() - 0.5) * 18;
+      t.px(x, y, 60 + band * 0.4 + v, 190 + band + v, 214 + band + v, 210);
+    }
+    for (let i = 0; i < 12; i++) t.px((t.rnd() * TILE) | 0, (t.rnd() * TILE) | 0, 236, 255, 255, 240);
+  });
+  paintTile('plating', t => {
+    t.fill(122, 128, 136, 8);
+    for (const i of [0, 15]) for (let k = 0; k < TILE; k++) { t.px(k, i, 84, 88, 96); t.px(i, k, 84, 88, 96); }
+    for (let k = 0; k < TILE; k++) t.px(k, 7, 96, 100, 108);                      // a panel seam
+    for (const [rx, ry] of [[2,2],[13,2],[2,13],[13,13]]) t.px(rx, ry, 176, 182, 192);   // rivets
+    t.specks(14, 96, 88, 78, 8);                                                  // rust
+  });
+  paintTile('neon', t => {
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+      const edge = x < 2 || y < 2 || x > 13 || y > 13;
+      const v = (t.rnd() - 0.5) * 12;
+      t.px(x, y, edge ? 40 : 90 + v, edge ? 46 : 236 + v, edge ? 54 : 244 + v);
+    }
+    for (let k = 3; k < 13; k++) { t.px(k, 5, 240, 255, 255); t.px(k, 10, 240, 255, 255); }
+  });
+  paintTile('circuit', t => {
+    t.fill(28, 62, 44, 6);
+    for (const y of [3, 8, 12]) for (let x = 1; x < 15; x++) t.px(x, y, 208, 176, 72);   // gold traces
+    for (const x of [4, 11]) for (let y = 1; y < 15; y++) t.px(x, y, 208, 176, 72);
+    for (let y = 5; y < 8; y++) for (let x = 6; x < 10; x++) t.px(x, y, 26, 28, 32);     // the chip
+    t.px(7, 6, 190, 60, 52);
+  });
+
   paintTile('portal', t => {
     for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
       const d = Math.hypot(x - 7.5, y - 7.5);
@@ -660,6 +776,408 @@ function buildTextures() {
       t.px(x, y, 146 + v, 110 + v, 66 + v, 255);
     }
   });
+
+  // --- a workshop printer and a television -------------------------------
+  const panel = (t, base) => {
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+      const edge = x < 1 || y < 1 || x > 14 || y > 14;
+      const v = (t.rnd() - 0.5) * 7;
+      t.px(x, y, base[0] + v - (edge ? 22 : 0), base[1] + v - (edge ? 22 : 0), base[2] + v - (edge ? 22 : 0));
+    }
+  };
+  paintTile('printer_side', t => {
+    panel(t, [92, 96, 104]);
+    for (const y of [4, 6, 8, 10]) for (let x = 3; x < 13; x++) t.px(x, y, 58, 62, 70);   // vents
+  });
+  paintTile('printer_top', t => {
+    panel(t, [78, 82, 90]);
+    for (let x = 1; x < 15; x++) { t.px(x, 5, 176, 180, 188); t.px(x, 10, 176, 180, 188); }   // gantry rails
+    for (let y = 6; y < 10; y++) for (let x = 6; x < 10; x++) t.px(x, y, 132, 138, 148);      // the head
+    for (let y = 10; y < 12; y++) for (let x = 7; x < 9; x++) t.px(x, y, 232, 176, 62);       // hot nozzle
+  });
+  paintTile('printer_front', t => {
+    panel(t, [92, 96, 104]);
+    for (let y = 3; y < 9; y++) for (let x = 2; x < 14; x++) {
+      const v = (t.rnd() - 0.5) * 10;
+      t.px(x, y, 34 + v, 44 + v, 38 + v);                                                     // the window
+    }
+    for (let y = 5; y < 8; y++) for (let x = 5; x < 11; x++) t.px(x, y, 120, 214, 140);        // something printing
+    for (const x of [4, 7, 10]) { t.px(x, 12, 226, 92, 72); t.px(x + 1, 12, 92, 200, 226); }   // buttons
+  });
+
+  paintTile('tv_side', t => {
+    panel(t, [46, 48, 54]);
+    for (let x = 5; x < 11; x++) t.px(x, 14, 120, 124, 132);
+  });
+  const screen = (name, draw) => paintTile(name, t => {
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+      const v = (t.rnd() - 0.5) * 6;
+      t.px(x, y, 40 + v, 42 + v, 48 + v);                                                     // the casing
+    }
+    for (let y = 2; y < 13; y++) for (let x = 1; x < 15; x++) draw(t, x, y);
+    for (let x = 6; x < 10; x++) t.px(x, 14, 96, 100, 108);                                   // the stand
+  });
+  screen('tv_off', (t, x, y) => {
+    const v = (t.rnd() - 0.5) * 5;
+    t.px(x, y, 16 + v, 18 + v, 22 + v);
+    if (x === 13 && y === 11) t.px(x, y, 180, 60, 52);                                        // standby light
+  });
+  screen('tv_bars', (t, x, y) => {
+    const bars = [[220,220,220],[220,214,64],[64,214,220],[64,200,80],[214,72,190],[214,72,64],[72,84,214]];
+    const c = bars[Math.min(bars.length - 1, Math.floor((x - 1) / 2))];
+    const v = (t.rnd() - 0.5) * 8;
+    t.px(x, y, c[0] + v, c[1] + v, c[2] + v);
+  });
+  screen('tv_view', (t, x, y) => {
+    const v = (t.rnd() - 0.5) * 8;
+    if (y < 7) t.px(x, y, 96 + v, 156 + v, 226 + v);                                          // sky
+    else if (y < 9) t.px(x, y, 62 + v, 122 + v, 58 + v);                                      // hills
+    else t.px(x, y, 88 + v, 148 + v, 62 + v);                                                 // field
+    if (x > 10 && x < 13 && y > 2 && y < 5) t.px(x, y, 250, 230, 140);                         // sun
+  });
+  screen('tv_static', (t, x, y) => {
+    const g = t.rnd() < 0.5 ? 30 + t.rnd() * 40 : 150 + t.rnd() * 100;
+    t.px(x, y, g, g, g);
+  });
+
+  paintTile('darkstone', t => {
+    t.fill(28, 26, 34, 6);
+    t.specks(30, 14, 13, 18, 5);
+    for (let i = 0; i < 8; i++) {                        // a few cold glints in the dark
+      const cx = (t.rnd() * TILE) | 0, cy = (t.rnd() * TILE) | 0;
+      t.px(cx, cy, 68, 62, 88);
+    }
+  });
+
+  // ---- the Deep Lands ---------------------------------------------------
+  // Everything down there is one of two colours: deepslate, which is nearly
+  // black, and the cold blue-green light of the sculk, which is the only thing
+  // that can be seen from more than a few blocks away.
+  const SCULK_LIT = [86, 224, 216], SCULK_DARK = [12, 20, 26];
+
+  paintTile('reinforced_deepslate', t => {
+    t.fill(58, 60, 68, 8);
+    t.specks(30, 42, 44, 52, 6);
+    for (let i = 0; i < TILE; i++) {                       // a band of old metal across the middle
+      t.px(i, 6, 118, 116, 128); t.px(i, 9, 96, 94, 108);
+      t.px(6, i, 112, 110, 122); t.px(9, i, 92, 90, 104);
+    }
+    for (const [x, y] of [[7, 7], [8, 8], [7, 8], [8, 7]]) t.px(x, y, 148, 204, 198);
+  });
+
+  paintTile('sculk', t => {
+    t.fill(SCULK_DARK[0], SCULK_DARK[1], SCULK_DARK[2], 5);
+    for (let i = 0; i < 5; i++) {                          // veins wandering across it
+      let x = (t.rnd() * TILE) | 0, y = (t.rnd() * TILE) | 0;
+      for (let k = 0; k < 14; k++) {
+        const f = 0.28 + t.rnd() * 0.5;
+        t.px(x, y, SCULK_LIT[0] * f, SCULK_LIT[1] * f, SCULK_LIT[2] * f);
+        x = (x + (t.rnd() < 0.5 ? 1 : -1) + TILE) % TILE;
+        y = (y + (t.rnd() < 0.6 ? 1 : 0) + TILE) % TILE;
+      }
+    }
+    for (let i = 0; i < 10; i++) t.px((t.rnd() * TILE) | 0, (t.rnd() * TILE) | 0, 40, 96, 100);
+  });
+
+  paintTile('sculk_bloom', t => {                          // sculk that has flowered, and glows
+    t.fill(16, 30, 36, 5);
+    for (let i = 0; i < 26; i++) {
+      const x = (t.rnd() * TILE) | 0, y = (t.rnd() * TILE) | 0, f = 0.5 + t.rnd() * 0.5;
+      t.px(x, y, SCULK_LIT[0] * f, SCULK_LIT[1] * f, SCULK_LIT[2] * f);
+      if (t.rnd() < 0.5) t.px(x + 1, y, SCULK_LIT[0] * 0.4, SCULK_LIT[1] * 0.4, SCULK_LIT[2] * 0.4);
+    }
+  });
+
+  paintTile('sensor_top', t => {                           // the listening one: tendrils around a dish
+    t.fill(18, 34, 42, 5);
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2;
+      for (let r = 3; r < 8; r++) {
+        const f = 1 - (r - 3) / 6;
+        t.px(8 + Math.cos(a) * r, 8 + Math.sin(a) * r, SCULK_LIT[0] * f, SCULK_LIT[1] * f, SCULK_LIT[2] * f);
+      }
+    }
+    for (let y = 6; y < 10; y++) for (let x = 6; x < 10; x++) t.px(x, y, 156, 244, 236);
+  });
+  paintTile('sensor_side', t => {
+    t.fill(14, 26, 32, 5);
+    for (let x = 0; x < TILE; x++) {
+      const h = 2 + ((t.rnd() * 3) | 0);
+      for (let y = 0; y < h; y++) {
+        const f = 0.8 - y * 0.2;
+        t.px(x, y, SCULK_LIT[0] * f, SCULK_LIT[1] * f, SCULK_LIT[2] * f);
+      }
+    }
+  });
+
+  paintTile('echo_ore', t => {
+    t.fill(48, 50, 58, 7);
+    t.specks(26, 38, 40, 48, 5);
+    for (const [cx, cy] of [[4, 5], [10, 4], [6, 11], [12, 10]]) {
+      for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [1, 1], [2, 1], [1, 2]]) {
+        t.px(cx + dx, cy + dy, 120 + t.rnd() * 40, 226, 220);
+      }
+      t.px(cx, cy, 220, 252, 250);
+    }
+  });
+
+  paintTile('deepslate_bricks', t => {
+    t.fill(52, 54, 62, 6);
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+      const row = (y / 8) | 0, off = row % 2 ? 8 : 0;
+      if (y % 8 === 0 || (x + off) % 16 === 0) t.px(x, y, 32, 34, 40);
+    }
+    t.specks(18, 68, 70, 80, 6);
+  });
+
+  // Crystals. Three of them, the same shape in three different tempers: the
+  // Deep Lands swap between them depending on how much noise is being made.
+  const crystalTile = (name, glow) => paintTile(name, t => {
+    t.fill(20, 24, 32, 4);
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+      const d = Math.abs(x - 8) + Math.abs(y - 8);
+      if (d > 8) continue;
+      const f = 1 - d / 11 + (t.rnd() - 0.5) * 0.18;
+      t.px(x, y, glow[0] * f, glow[1] * f, glow[2] * f);
+    }
+    for (let y = 4; y < 12; y++) t.px(8, y, glow[0], glow[1], glow[2]);
+  });
+  crystalTile('crystal_calm', [72, 196, 210]);
+  crystalTile('crystal_roused', [186, 176, 84]);
+  crystalTile('crystal_alarmed', [222, 74, 86]);
+
+  crossTile('spore_blossom', t => {
+    for (let y = 9; y < 16; y++) t.px(8, y, 44, 96, 92, 255);       // the stem it hangs from
+    for (const [x, y] of [[5, 5], [11, 5], [5, 9], [11, 9], [8, 3], [8, 11], [3, 7], [13, 7]]) {
+      for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
+        t.px(x + dx, y + dy, 168 + t.rnd() * 50, 108, 206, 255);
+      }
+    }
+    for (let y = 6; y < 10; y++) for (let x = 6; x < 10; x++) t.px(x, y, 246, 232, 168, 255);
+  });
+
+  paintTile('deep_portal', t => {                          // the way in, seen edge-on
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+      const d = Math.hypot(x - 7.5, y - 7.5);
+      const f = 0.25 + 0.75 * Math.abs(Math.sin(d * 0.9 + t.rnd() * 0.4));
+      t.px(x, y, 26 + f * 70, 60 + f * 170, 90 + f * 150, 210);
+    }
+  });
+
+  // ---- the Hacker Dimension ---------------------------------------------
+  // A world somebody has been at with tools they should not have. Everything in
+  // it looks like a rendering that has gone wrong on purpose.
+  paintTile('voidstone', t => {                          // the floor of the grid
+    t.fill(10, 12, 16, 3);
+    for (let i = 0; i < TILE; i++) { t.px(i, 0, 40, 210, 120); t.px(0, i, 40, 210, 120); }
+    for (let i = 0; i < TILE; i += 4) { t.px(i, 8, 20, 80, 52); t.px(8, i, 20, 80, 52); }
+  });
+
+  paintTile('corrupt', t => {                            // the texture that is not there
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+      const on = (((x >> 3) + (y >> 3)) & 1) === 0;
+      t.px(x, y, on ? 232 : 8, on ? 40 : 8, on ? 232 : 12);
+    }
+  });
+
+  paintTile('datastream', t => {                         // characters falling down a column
+    t.data.fill(0);
+    for (const x of [2, 6, 10, 13]) {
+      const start = (t.rnd() * TILE) | 0;
+      for (let k = 0; k < 11; k++) {
+        const y = (start + k) % TILE;
+        const f = 1 - k / 12;
+        t.px(x, y, 40 * f, (150 + 105 * f) * f, 90 * f, 255);
+        if (t.rnd() < 0.4) t.px(x + 1, y, 30 * f, 150 * f, 70 * f, 255);
+      }
+    }
+  });
+
+  paintTile('rack_side', t => {                          // a server, still running
+    t.fill(26, 28, 34, 5);
+    for (let y = 1; y < TILE; y += 3) {
+      for (let x = 1; x < TILE - 1; x++) t.px(x, y, 44, 46, 56);
+      t.px(2, y, 90, 230, 130);
+      if (t.rnd() < 0.5) t.px(4, y, 230, 180, 60);
+    }
+  });
+  paintTile('rack_top', t => { t.fill(34, 36, 44, 5); t.specks(24, 60, 64, 76, 6); });
+
+  paintTile('hack_portal', t => {                        // the way in, made of nothing but code
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+      const f = (((x * 5 + y * 3) % 7) < 3 ? 1 : 0.35) * (0.5 + t.rnd() * 0.5);
+      t.px(x, y, 20 * f, 60 + 190 * f, 70 * f, 200);
+    }
+  });
+
+  // ---- Poseidon's realm --------------------------------------------------
+  // Prismarine is a stone that cannot make up its mind what colour it is, which
+  // is exactly right for a place that is entirely underwater.
+  const prismarineTile = (name, a, b) => paintTile(name, t => {
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+      const m = (Math.sin(x * 0.9) + Math.cos(y * 0.7) + t.rnd() * 0.8) * 0.25 + 0.5;
+      t.px(x, y, a[0] + (b[0] - a[0]) * m, a[1] + (b[1] - a[1]) * m, a[2] + (b[2] - a[2]) * m);
+    }
+  });
+  prismarineTile('prismarine', [88, 152, 140], [130, 196, 176]);
+  prismarineTile('dark_prismarine', [44, 82, 74], [64, 110, 96]);
+
+  paintTile('prismarine_bricks', t => {
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+      const m = (Math.sin(x * 0.8) + Math.cos(y * 0.9)) * 0.2 + 0.55;
+      t.px(x, y, 96 + 44 * m, 168 + 40 * m, 152 + 36 * m);
+    }
+    for (let i = 0; i < TILE; i++) { t.px(i, 0, 60, 108, 100); t.px(i, 8, 60, 108, 100); t.px(0, i, 60, 108, 100); t.px(8, i, 60, 108, 100); }
+  });
+
+  paintTile('sea_lantern', t => {
+    t.fill(196, 226, 214, 6);
+    for (let i = 0; i < 5; i++) {                        // the pale cells inside it
+      const w = 3 + ((t.rnd() * 4) | 0), h = 3 + ((t.rnd() * 4) | 0);
+      const ox = (t.rnd() * (TILE - w)) | 0, oy = (t.rnd() * (TILE - h)) | 0;
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) t.px(ox + x, oy + y, 240, 252, 238);
+    }
+    t.specks(20, 160, 200, 190, 8);
+  });
+
+  paintTile('marble', t => { t.fill(226, 226, 218, 6); t.specks(26, 198, 200, 200, 8);
+    let x = 3 + ((t.rnd() * 9) | 0);
+    for (let y = 0; y < TILE; y++) { t.px(x, y, 186, 190, 194); if (t.rnd() < 0.5) x += t.rnd() < 0.5 ? 1 : -1; } });
+
+  const coralTile = (name, col) => paintTile(name, t => {
+    t.fill(col[0] * 0.7, col[1] * 0.7, col[2] * 0.7, 8);
+    for (let i = 0; i < 26; i++) {                       // knuckly, uneven growth
+      const cx = (t.rnd() * TILE) | 0, cy = (t.rnd() * TILE) | 0;
+      for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
+        t.px(cx + dx, cy + dy, col[0] + (t.rnd() - 0.5) * 30, col[1] + (t.rnd() - 0.5) * 30, col[2] + (t.rnd() - 0.5) * 30);
+      }
+    }
+  });
+  coralTile('coral_pink', [236, 118, 178]);
+  coralTile('coral_blue', [92, 132, 232]);
+  coralTile('coral_gold', [242, 190, 70]);
+
+  crossTile('seagrass', t => {
+    for (let i = 0; i < 6; i++) {
+      const x = 3 + i * 1.8, h = 8 + ((t.rnd() * 7) | 0);
+      for (let k = 0; k < h; k++) {
+        const v = (t.rnd() - 0.5) * 26;
+        t.px(Math.round(x + Math.sin(k * 0.5) * 1.4), 15 - k, 44 + v, 148 + v, 96 + v, 255);
+      }
+    }
+  });
+
+  paintTile('sea_portal', t => {                         // water standing upright
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+      const f = 0.35 + 0.65 * Math.abs(Math.sin((x + y * 1.7) * 0.55 + t.rnd() * 0.5));
+      t.px(x, y, 40 + f * 70, 140 + f * 90, 190 + f * 60, 205);
+    }
+  });
+
+  // ---- shops, runways, bushes and the Moon --------------------------------
+  paintTile('shop_front', t => {                         // a counter with an awning over it
+    t.fill(146, 106, 70, 8);
+    for (let y = 0; y < 5; y++) for (let x = 0; x < TILE; x++) {
+      t.px(x, y, ((x >> 1) & 1) ? 214 : 196, ((x >> 1) & 1) ? 74 : 214, ((x >> 1) & 1) ? 68 : 210);
+    }
+    for (let x = 0; x < TILE; x++) t.px(x, 5, 96, 68, 44);
+    for (let y = 8; y < 12; y++) for (let x = 2; x < TILE - 2; x++) t.px(x, y, 178, 140, 96);
+    t.specks(20, 120, 86, 56, 8);
+  });
+  paintTile('shop_side', t => { t.fill(132, 96, 62, 9); t.specks(24, 106, 76, 48, 8);
+    for (let y = 0; y < 5; y++) for (let x = 0; x < TILE; x++) t.px(x, y, ((x >> 1) & 1) ? 200 : 190, ((x >> 1) & 1) ? 78 : 200, 72 + (((x >> 1) & 1) ? 0 : 130)); });
+  paintTile('shop_top', t => { t.fill(160, 118, 78, 8); t.specks(22, 128, 92, 58, 8); });
+
+  paintTile('tarmac', t => { t.fill(56, 58, 62, 5); t.specks(34, 42, 44, 48, 5); });
+  paintTile('runway', t => {                             // asphalt with the centre line on it
+    t.fill(44, 46, 50, 4);
+    t.specks(30, 34, 36, 40, 4);
+    for (let y = 3; y < 13; y++) for (let x = 6; x < 10; x++) t.px(x, y, 226, 226, 220);
+  });
+
+  crossTile('bush', t => {
+    for (let i = 0; i < 60; i++) {
+      const a = t.rnd() * Math.PI * 2, r = t.rnd() * 6.2;
+      const x = Math.round(8 + Math.cos(a) * r), y = Math.round(11 + Math.sin(a) * r * 0.7);
+      const v = (t.rnd() - 0.5) * 34;
+      t.px(x, y, 58 + v, 118 + v, 52 + v, 255);
+    }
+    for (let y = 12; y < 16; y++) t.px(8, y, 92, 68, 44, 255);
+  });
+  crossTile('berry_bush', t => {
+    for (let i = 0; i < 60; i++) {
+      const a = t.rnd() * Math.PI * 2, r = t.rnd() * 6.2;
+      const x = Math.round(8 + Math.cos(a) * r), y = Math.round(11 + Math.sin(a) * r * 0.7);
+      const v = (t.rnd() - 0.5) * 30;
+      t.px(x, y, 48 + v, 104 + v, 46 + v, 255);
+    }
+    for (const [x, y] of [[5, 8], [10, 7], [7, 12], [12, 11], [4, 12], [9, 10]]) {
+      t.px(x, y, 208, 42, 46, 255); t.px(x + 1, y, 176, 30, 36, 255);
+    }
+    for (let y = 12; y < 16; y++) t.px(8, y, 92, 68, 44, 255);
+  });
+
+  paintTile('moon_rock', t => { t.fill(126, 124, 128, 9); t.specks(34, 96, 94, 100, 8); t.specks(16, 158, 156, 160, 6); });
+  paintTile('moon_dust', t => { t.fill(158, 156, 158, 7); t.specks(40, 132, 130, 134, 6); t.specks(18, 186, 184, 186, 5); });
+  paintTile('solar', t => {
+    t.fill(26, 34, 62, 4);
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+      if (x % 4 === 0 || y % 8 === 0) t.px(x, y, 128, 132, 146);
+      else if ((x + y) % 9 === 0) t.px(x, y, 66, 96, 158);
+    }
+  });
+
+  // ---- things that go off ------------------------------------------------
+  paintTile('tnt_side', t => {
+    t.fill(196, 58, 48, 8);
+    for (let y = 5; y < 11; y++) for (let x = 0; x < TILE; x++) t.px(x, y, 236, 236, 230);
+    const word = ['..X..X..X..X....', '..X..X..X.X.....'];
+    for (let y = 6; y < 10; y++) for (let x = 2; x < 13; x++) if ((x + y) % 5 === 0) t.px(x, y, 40, 40, 44);
+    t.specks(18, 168, 44, 38, 6);
+  });
+  paintTile('tnt_top', t => { t.fill(206, 74, 62, 8); t.specks(24, 176, 52, 44, 7);
+    for (let i = 0; i < TILE; i++) { t.px(i, 0, 150, 40, 34); t.px(0, i, 150, 40, 34); } });
+  paintTile('nuke_side', t => {
+    t.fill(206, 196, 60, 6);
+    // the trefoil, roughly, in black
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+      const dx = x - 7.5, dy = y - 7.5, r = Math.hypot(dx, dy);
+      if (r < 2) { t.px(x, y, 24, 24, 26); continue; }
+      if (r < 3.4 || r > 7.2) continue;
+      let a = Math.atan2(dy, dx) + Math.PI;
+      const seg = (a / (Math.PI * 2 / 3)) % 1;
+      if (seg < 0.55) t.px(x, y, 24, 24, 26);
+    }
+  });
+  paintTile('nuke_top', t => { t.fill(196, 186, 56, 6); t.specks(26, 166, 158, 46, 7);
+    for (let i = 0; i < TILE; i++) { t.px(i, 0, 40, 40, 30); t.px(0, i, 40, 40, 30); } });
+
+  // Torches. The engine only draws whole cubes, so — exactly as the open door
+  // does — the texture is mostly nothing, and what is left reads as a torch.
+  // A torch is a thin post with a flame on the end, not a cube: it is drawn as a
+  // sub-box, and the box takes its texture from the top ten-sixteenths of the
+  // tile, so that is where the torch has to be painted.
+  const torchTile = (name, bracket) => paintTile(name, t => {
+    t.data.fill(0);
+    for (let y = 3; y < 10; y++) {                                   // the handle
+      const v = (t.rnd() - 0.5) * 12;
+      t.px(7, y, 132 + v, 96 + v, 56 + v, 255);
+      t.px(8, y, 106 + v, 74 + v, 42 + v, 255);
+    }
+    for (let y = 0; y < 3; y++) for (let x = 6; x <= 9; x++) {       // the flame on top of it
+      if ((x === 6 || x === 9) && y === 0) continue;
+      const hot = y >= 2;
+      const v = (t.rnd() - 0.5) * 22;
+      t.px(x, y, (hot ? 252 : 255) + v, (hot ? 170 : 226) + v, (hot ? 56 : 130) + v, 255);
+    }
+    t.px(7, 0, 255, 248, 206, 255); t.px(8, 0, 255, 244, 190, 255);
+    // the square the top face samples, so the end of the torch glows rather than
+    // showing the cut end of a stick
+    for (let y = 7; y <= 8; y++) for (let x = 7; x <= 8; x++) t.px(x, y, 250, 190, 96, 255);
+    if (bracket) for (let y = 8; y < 11; y++) { t.px(5, y, 96, 100, 108, 255); t.px(6, y, 78, 82, 90, 255); }
+  });
+  torchTile('torch', 0);
+  torchTile('torch_wall', 1);
 
   paintTile('end_stone', t => {
     t.fill(220, 224, 168, 10);
@@ -837,6 +1355,118 @@ function buildBlocks() {
     PORTAL: defBlock('Nether Portal', 'portal', { solid: false, opaque: false, translucent: true, light: 11, portal: true }),
   });
   Object.assign(B, {
+    DARKSTONE: defBlock('Darkstone', 'darkstone', { darkstone: true }),
+    PUMPKIN_RED: defBlock('Red-Eyed Pumpkin', { top: 'pumpkin_top', side: 'pumpkin_side', front: 'pumpkin_red_face' },
+      { light: 6, redPumpkin: true }),
+    PUMPKIN_LIT: defBlock("Jack o'Lantern", { top: 'pumpkin_top', side: 'pumpkin_side', front: 'pumpkin_lit_face' },
+      { light: 13 }),
+    // The same lantern with its face cut the other way, for the wall of a world
+    // you stand inside: you want to be looking at the grin, not the back of it.
+    PUMPKIN_LIT_IN: defBlock("Jack o'Lantern", { top: 'pumpkin_top', side: 'pumpkin_side', front: 'pumpkin_side' },
+      { light: 13 }),
+    PRINTER: defBlock('3D Printer', { top: 'printer_top', side: 'printer_side', bottom: 'printer_side', front: 'printer_front' },
+      { printer: true, light: 4 }),
+    TV: defBlock('Television', { top: 'tv_side', side: 'tv_side', bottom: 'tv_side', front: 'tv_off' }, { tv: 0 }),
+    TV_BARS: defBlock('Television', { top: 'tv_side', side: 'tv_side', bottom: 'tv_side', front: 'tv_bars' }, { tv: 1, light: 9 }),
+    TV_VIEW: defBlock('Television', { top: 'tv_side', side: 'tv_side', bottom: 'tv_side', front: 'tv_view' }, { tv: 2, light: 9 }),
+    TV_STATIC: defBlock('Television', { top: 'tv_side', side: 'tv_side', bottom: 'tv_side', front: 'tv_static' }, { tv: 3, light: 7 }),
+
+    // ---- the Deep Lands ---------------------------------------------------
+    REINFORCED_DEEPSLATE: defBlock('Reinforced Deepslate', 'reinforced_deepslate', { hardness: 9, deepFrame: true }),
+    DEEPSLATE_BRICKS: defBlock('Deepslate Bricks', 'deepslate_bricks', { hardness: 2.4 }),
+    SCULK: defBlock('Sculk', 'sculk', { hardness: 0.8, sculk: true }),
+    SCULK_BLOOM: defBlock('Sculk Bloom', 'sculk_bloom', { hardness: 0.8, light: 6, sculk: true }),
+    SCULK_SENSOR: defBlock('Sculk Sensor', { top: 'sensor_top', side: 'sensor_side', bottom: 'sculk' },
+      { hardness: 1, light: 3, sensor: true }),
+    ECHO_ORE: defBlock('Echo Ore', 'echo_ore', { hardness: 4, light: 3 }),
+    CRYSTAL_CALM: defBlock('Echo Crystal', 'crystal_calm', { hardness: 1.2, light: 9, crystal: 0 }),
+    CRYSTAL_ROUSED: defBlock('Echo Crystal', 'crystal_roused', { hardness: 1.2, light: 10, crystal: 1 }),
+    CRYSTAL_ALARMED: defBlock('Echo Crystal', 'crystal_alarmed', { hardness: 1.2, light: 11, crystal: 2 }),
+    SPORE_BLOSSOM: defBlock('Spore Blossom', 'spore_blossom', { solid: false, opaque: false, plant: true, light: 11 }),
+    DEEP_PORTAL: defBlock('Deep Rift', 'deep_portal',
+      { solid: false, opaque: false, translucent: true, light: 12, hardness: 0 }),
+
+    // ---- the Hacker Dimension ---------------------------------------------
+    VOIDSTONE: defBlock('Voidstone', 'voidstone', { hardness: 3, light: 2 }),
+    CORRUPT: defBlock('Corrupted Block', 'corrupt', { hardness: 1.5, light: 4 }),
+    DATASTREAM: defBlock('Datastream', 'datastream',
+      { solid: false, opaque: false, translucent: true, light: 10, hardness: 0.2 }),
+    SERVER_RACK: defBlock('Server Rack', { top: 'rack_top', side: 'rack_side', bottom: 'rack_top' },
+      { hardness: 3, light: 7 }),
+    HACK_PORTAL: defBlock('Breach', 'hack_portal',
+      { solid: false, opaque: false, translucent: true, light: 14, hardness: 0 }),
+
+    // ---- Poseidon's realm --------------------------------------------------
+    PRISMARINE: defBlock('Prismarine', 'prismarine', { hardness: 1.6, seaFrame: true }),
+    PRISMARINE_BRICKS: defBlock('Prismarine Bricks', 'prismarine_bricks', { hardness: 1.6 }),
+    DARK_PRISMARINE: defBlock('Dark Prismarine', 'dark_prismarine', { hardness: 1.6 }),
+    SEA_LANTERN: defBlock('Sea Lantern', 'sea_lantern', { hardness: 0.5, light: 15 }),
+    MARBLE: defBlock('Sea Marble', 'marble', { hardness: 1.6 }),
+    CORAL_PINK: defBlock('Pink Coral', 'coral_pink', { hardness: 0.6, light: 4 }),
+    CORAL_BLUE: defBlock('Blue Coral', 'coral_blue', { hardness: 0.6, light: 4 }),
+    CORAL_GOLD: defBlock('Gold Coral', 'coral_gold', { hardness: 0.6, light: 5 }),
+    SEAGRASS: defBlock('Seagrass', 'seagrass', { solid: false, opaque: false, plant: true }),
+    SEA_PORTAL: defBlock("Poseidon's Gate", 'sea_portal',
+      { solid: false, opaque: false, translucent: true, light: 12, hardness: 0 }),
+
+    // ---- shops, airports, bushes and space ---------------------------------
+    SHOP: defBlock('Shop Counter', { top: 'shop_top', side: 'shop_side', bottom: 'shop_top', front: 'shop_front' },
+      { hardness: 2, shop: true }),
+    TARMAC: defBlock('Tarmac', 'tarmac', { hardness: 2.2 }),
+    RUNWAY: defBlock('Runway', { top: 'runway', side: 'tarmac', bottom: 'tarmac' }, { hardness: 2.2 }),
+    BUSH: defBlock('Bush', 'bush', { solid: false, opaque: false, plant: true }),
+    BERRY_BUSH: defBlock('Berry Bush', 'berry_bush', { solid: false, opaque: false, plant: true, berries: true }),
+    MOON_ROCK: defBlock('Moon Rock', 'moon_rock', { hardness: 3 }),
+    MOON_DUST: defBlock('Moon Dust', 'moon_dust', { hardness: 0.6 }),
+    SOLAR_PANEL: defBlock('Solar Panel', { top: 'solar', side: 'plating', bottom: 'plating' }, { hardness: 2, light: 3 }),
+    TNT: defBlock('TNT', { top: 'tnt_top', side: 'tnt_side', bottom: 'tnt_top' },
+      { hardness: 0.4, explosive: { power: 4.5, fuse: 3, damage: 18 } }),
+    NUKE: defBlock('Nuclear Bomb', { top: 'nuke_top', side: 'nuke_side', bottom: 'nuke_top' },
+      { hardness: 1.2, light: 3, explosive: { power: 22, fuse: 8, damage: 90, nuclear: true } }),
+  });
+
+  Object.assign(B, {
+    ORANGE_WOOL: defBlock('Orange Wool', 'wool_orange'),
+    MAGENTA_WOOL: defBlock('Magenta Wool', 'wool_magenta'),
+    LIGHT_BLUE_WOOL: defBlock('Light Blue Wool', 'wool_lightblue'),
+    LIME_WOOL: defBlock('Lime Wool', 'wool_lime'),
+    PINK_WOOL: defBlock('Pink Wool', 'wool_pink'),
+    GREY_WOOL: defBlock('Grey Wool', 'wool_grey'),
+    LIGHT_GREY_WOOL: defBlock('Light Grey Wool', 'wool_lightgrey'),
+    CYAN_WOOL: defBlock('Cyan Wool', 'wool_cyan'),
+    PURPLE_WOOL: defBlock('Purple Wool', 'wool_purple'),
+    BROWN_WOOL: defBlock('Brown Wool', 'wool_brown'),
+
+    RED_FLOWER: defBlock('Poppy', 'flower_red', { solid: false, opaque: false, plant: true }),
+    YELLOW_FLOWER: defBlock('Dandelion', 'flower_yellow', { solid: false, opaque: false, plant: true }),
+    TALL_GRASS: defBlock('Tall Grass', 'tall_grass', { solid: false, opaque: false, plant: true }),
+
+    STAIRS_N: defBlock('Stone Stairs', 'stone_bricks', { opaque: false, stairs: true,
+      boxes: [[0, 0, 0, 1, 0.5, 1], [0, 0.5, 0, 1, 1, 0.5]] }),
+    STAIRS_E: defBlock('Stone Stairs', 'stone_bricks', { opaque: false, stairs: true,
+      boxes: [[0, 0, 0, 1, 0.5, 1], [0.5, 0.5, 0, 1, 1, 1]] }),
+    STAIRS_S: defBlock('Stone Stairs', 'stone_bricks', { opaque: false, stairs: true,
+      boxes: [[0, 0, 0, 1, 0.5, 1], [0, 0.5, 0.5, 1, 1, 1]] }),
+    STAIRS_W: defBlock('Stone Stairs', 'stone_bricks', { opaque: false, stairs: true,
+      boxes: [[0, 0, 0, 1, 0.5, 1], [0, 0.5, 0, 0.5, 1, 1]] }),
+    // 2/16 across, 10/16 tall, standing in the middle of its block — Minecraft's
+    // proportions, so a torch on a floor looks like a torch and not like a brick.
+    TORCH: defBlock('Torch', 'torch', { solid: false, opaque: false, light: 14, torch: true,
+      boxes: [[0.4375, 0, 0.4375, 0.5625, 0.625, 0.5625]] }),
+    TORCH_WALL: defBlock('Torch', 'torch_wall', { solid: false, opaque: false, light: 14, torch: true,
+      boxes: [[0.4375, 0.2, 0.4375, 0.5625, 0.825, 0.5625]] }),
+    PLATING: defBlock('Steel Plating', 'plating'),
+    NEON: defBlock('Neon Panel', 'neon', { light: 14 }),
+    CIRCUIT: defBlock('Circuit Block', 'circuit', { light: 3 }),
+    FUTURE_PORTAL: defBlock('Rift', 'future_portal',
+      { solid: false, opaque: false, translucent: true, light: 13, futurePortal: true }),
+  });
+
+  Object.assign(B, {
+    TIME_PORTAL: defBlock('Time Portal', 'time_portal',
+      { solid: false, opaque: false, translucent: true, light: 12, timePortal: true }),
+  });
+  Object.assign(B, {
     BED_HEAD: defBlock('Bed', { top: 'bed_top_head', side: 'bed_side', bottom: 'planks' }),
     BED_FOOT: defBlock('Bed Foot', { top: 'bed_top_foot', side: 'bed_side', bottom: 'planks' }),
     CHEST: defBlock('Chest', { top: 'chest_top', side: 'chest_side', bottom: 'chest_top', front: 'chest_front' }),
@@ -867,12 +1497,57 @@ function buildBlocks() {
     DRAGON_EGG: defBlock('Dragon Egg', 'dragon_egg', { light: 3 }),
   });
 
+  // Whole families of shaped blocks, now that the mesher can draw part of a cube.
+  const stairSet = (label, tile) => {
+    const mk = box => defBlock(label, tile, { opaque: false, stairs: true, boxes: [[0, 0, 0, 1, 0.5, 1], box] });
+    const turns = [mk([0, .5, 0, 1, 1, .5]), mk([.5, .5, 0, 1, 1, 1]), mk([0, .5, .5, 1, 1, 1]), mk([0, .5, 0, .5, 1, 1])];
+    for (const id of turns) BLOCKS[id].turns = turns;
+    return turns[0];
+  };
+  B.STAIRS_OAK = stairSet('Oak Stairs', 'planks');
+  B.STAIRS_COBBLE = stairSet('Cobblestone Stairs', 'cobblestone');
+  for (const id of [B.STAIRS_N, B.STAIRS_E, B.STAIRS_S, B.STAIRS_W]) {
+    BLOCKS[id].turns = [B.STAIRS_N, B.STAIRS_E, B.STAIRS_S, B.STAIRS_W];
+  }
+
+  const slab = (label, tile) => defBlock(label, tile, { opaque: false, slab: true, boxes: [[0, 0, 0, 1, 0.5, 1]] });
+  B.SLAB_STONE = slab('Stone Slab', 'stone_bricks');
+  B.SLAB_OAK = slab('Oak Slab', 'planks');
+  B.SLAB_COBBLE = slab('Cobblestone Slab', 'cobblestone');
+
+  const FENCE_BOXES = [[.375, 0, .375, .625, 1, .625],
+                       [.4375, .3, 0, .5625, .55, 1], [0, .3, .4375, 1, .55, .5625],
+                       [.4375, .75, 0, .5625, .95, 1], [0, .75, .4375, 1, .95, .5625]];
+  B.FENCE = defBlock('Oak Fence', 'planks', { opaque: false, boxes: FENCE_BOXES });
+
+  const ladder = box => defBlock('Ladder', 'ladder', { solid: false, opaque: false, ladder: true, boxes: [box] });
+  const ladders = [ladder([0, 0, 0, 1, 1, .125]), ladder([.875, 0, 0, 1, 1, 1]),
+                   ladder([0, 0, .875, 1, 1, 1]), ladder([0, 0, 0, .125, 1, 1])];
+  for (const id of ladders) BLOCKS[id].turns = ladders;
+  B.LADDER = ladders[0];
+
+  BLOCKS[B.PUMPKIN_LIT_IN].faces[4] = TILE_ID['pumpkin_lit_face'];   // carved onto its +Z side
+
   B.LAVA_FLOW = [B.LAVA];
   for (let level = 1; level <= 3; level++) {
     B.LAVA_FLOW.push(defBlock('Flowing Lava', 'lava',
       { solid: false, opaque: false, liquid: true, level, fluid: 'lava', flowing: true, light: 15 }));
   }
 
+}
+
+// Does this block, sitting in cell (cx,cy,cz), get in the way of that box?
+// Full cubes always do; the ones made of sub-boxes are asked properly.
+function blockHits(id, cx, cy, cz, x0, y0, z0, x1, y1, z1) {
+  const def = BLOCKS[id];
+  if (!def.solid) return false;
+  if (!def.boxes) return true;
+  for (const b of def.boxes) {
+    if (x1 > cx + b[0] && x0 < cx + b[3] &&
+        y1 > cy + b[1] && y0 < cy + b[4] &&
+        z1 > cz + b[2] && z0 < cz + b[5]) return true;
+  }
+  return false;
 }
 
 const isOpaque = id => BLOCKS[id].opaque;

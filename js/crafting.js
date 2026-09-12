@@ -46,6 +46,11 @@ function blockDrop(id) {
   if (id === B.DOOR_UPPER || id === B.DOOR_UPPER_OPEN) return 0;      // the lower half carries the drop
   if (id === B.DOOR_LOWER_OPEN) return B.DOOR_LOWER;
   if (id === B.BED_FOOT) return B.BED_HEAD;
+  if (BLOCKS[id].stairs || BLOCKS[id].ladder) return BLOCKS[id].turns[0];
+  if (id === B.BERRY_BUSH) return I.BERRIES;                   // the fruit, not the bush
+  if (BLOCKS[id].plant) return id;                            // however it was turned
+  if (BLOCKS[id].torch) return B.TORCH;                                // however it was mounted
+  if (BLOCKS[id].tv) return B.TV;                                     // a switched-on set is still a set
   if (id === B.STONE) return B.COBBLESTONE;
   if (id === B.GRASS) return B.DIRT;
   return id;
@@ -79,6 +84,41 @@ function defineRecipes() {
   shapeless(B.GLASS, 2, [B.SAND, B.GLOWSTONE], 'Melt sand with glowstone');
   shapeless(B.GRASS, 1, [B.DIRT, ANY_LEAVES], 'Seed dirt with leaves');
   shaped(B.LAMP, 4, ['GGG', 'GWG', 'GGG'], { G: B.GLASS, W: B.GLOWSTONE }, 'Glowstone caged in glass');
+
+  // What the Deep Lands are actually for.
+  shaped(B.DEEPSLATE_BRICKS, 4, ['DD', 'DD'], { D: B.DEEPSLATE }, 'Cut deepslate into bricks');
+  shaped(I.SONIC_CANNON, 1, ['III', 'ESE', 'III'],
+    { I: I.IRON_INGOT, E: I.ECHO_SHARD, S: I.STICK }, 'An echo shard braced in iron: it fires the noise itself');
+  shaped(I.SOLYTRA, 1, ['E E', 'ECE', 'E E'],
+    { E: I.ECHO_SHARD, C: I.LEATHER_CHESTPLATE }, 'Wings of echo — glide with jump, boost with R');
+
+  // Poseidon's realm, and the server nobody is supposed to be able to reach.
+  shaped(B.PRISMARINE, 1, ['PP', 'PP'], { P: I.PRISMARINE_SHARD }, 'Press four shards into prismarine');
+  shaped(B.PRISMARINE_BRICKS, 4, ['PP', 'PP'], { P: B.PRISMARINE }, 'Cut prismarine into bricks');
+  shaped(B.DARK_PRISMARINE, 1, ['PP', 'PC'], { P: B.PRISMARINE, C: B.COAL_ORE }, 'Darken prismarine with coal');
+  shaped(B.SEA_LANTERN, 1, ['PP', 'PP'], { P: B.CORAL_GOLD }, 'Four gold corals make a lantern');
+  shaped(I.TRIDENT, 1, ['PPP', ' H ', ' S '],
+    { P: I.PRISMARINE_SHARD, H: I.HEART_OF_THE_SEA, S: I.STICK }, "Three prongs on a haft, round the heart of the sea");
+  shaped(I.BAN_HAMMER, 1, ['DDD', 'DSD', ' S '],
+    { D: I.DATA_SHARD, S: I.STICK }, 'Six data shards round a haft');
+  shaped(B.SERVER_RACK, 1, ['CC', 'CC'], { C: B.CIRCUIT }, 'Four circuit boards racked up');
+
+  // Guns, and what they eat. Gunpowder is coal ground up with gravel and sand.
+  shapeless(I.GUNPOWDER, 2, [B.COAL_ORE, B.GRAVEL, B.SAND], 'Grind coal, gravel and sand together');
+  shaped(I.BULLETS, 8, ['I', 'G'], { I: I.IRON_INGOT, G: I.GUNPOWDER }, 'Iron over a charge of powder');
+  shaped(I.PISTOL, 1, ['II', ' S'], { I: I.IRON_INGOT, S: I.STICK }, 'A short barrel and a grip');
+  shaped(I.RIFLE, 1, ['III', ' SS'], { I: I.IRON_INGOT, S: I.STICK }, 'A long barrel, a stock, and it does not stop');
+  shaped(I.SHOTGUN, 1, ['III', 'S S'], { I: I.IRON_INGOT, S: I.STICK }, 'Wide barrel, wider spread');
+  shaped(I.SNIPER, 1, ['IID', ' SS'], { I: I.IRON_INGOT, D: I.DIAMOND, S: I.STICK }, 'A diamond for the glass on top');
+
+  // Things that go off.
+  shaped(B.TNT, 1, ['GSG', 'SGS', 'GSG'], { G: I.GUNPOWDER, S: B.SAND }, 'Powder packed in sand');
+  shaped(B.NUKE, 1, ['III', 'GDG', 'III'],
+    { I: B.IRON_BLOCK, G: I.GUNPOWDER, D: B.DIAMOND_BLOCK }, 'Do not make this indoors');
+
+  // Bottles, and the counter to sell things over.
+  shaped(I.BOTTLE, 3, ['G G', ' G '], { G: B.GLASS }, 'Three bottles out of three panes');
+  shaped(B.SHOP, 1, ['WWW', 'PPP'], { W: B.WOOL, P: ANY_PLANKS }, 'A counter with an awning over it');
 
   shaped(B.POLISHED_ANDESITE, 4, ['AA', 'AA'], { A: B.ANDESITE }, 'Grind andesite smooth');
   shaped(B.POLISHED_DIORITE, 4, ['DD', 'DD'], { D: B.DIORITE }, 'Grind diorite smooth');
@@ -139,6 +179,22 @@ function defineRecipes() {
   shaped(B.FURNACE, 1, ['CCC', 'C C', 'CCC'], { C: B.COBBLESTONE }, 'Eight cobbles around a hollow');
   shaped(B.BED_HEAD, 1, ['WWW', 'PPP'], { W: [B.WOOL, B.RED_WOOL, B.BLUE_WOOL, B.GREEN_WOOL, B.YELLOW_WOOL, B.BLACK_WOOL], P: ANY_PLANKS }, 'Wool over planks');
   shaped(B.BED_FOOT, 1, ['PPP', 'WWW'], { W: [B.WOOL, B.RED_WOOL, B.BLUE_WOOL, B.GREEN_WOOL, B.YELLOW_WOOL, B.BLACK_WOOL], P: ANY_PLANKS }, 'The other end of the bed');
+  shaped(I.BUCKET, 1, ['I I', ' I '], { I: I.IRON_INGOT }, 'Three iron folded into a pail');
+  shaped(I.BOW, 1, [' SF', 'S F', ' SF'], { S: I.STICK, F: I.STRING_SUB || I.FEATHER }, 'Sticks strung with feather-fletch');
+  shaped(I.ARROW, 4, ['F', 'S', 'T'], { F: I.FLINT, S: I.STICK, T: I.FEATHER }, 'Flint, a stick and a feather');
+  shaped(B.LADDER, 3, ['S S', 'SSS', 'S S'], { S: I.STICK }, 'Seven sticks make three ladders');
+  shaped(B.FENCE, 3, ['SSS', 'SSS'], { S: I.STICK }, 'Six sticks make three lengths of fence');
+  shaped(B.SLAB_STONE, 6, ['SSS'], { S: B.STONE_BRICKS }, 'Bricks cut in half');
+  shaped(B.SLAB_OAK, 6, ['PPP'], { P: B.PLANKS }, 'Planks cut in half');
+  shaped(B.SLAB_COBBLE, 6, ['CCC'], { C: B.COBBLESTONE }, 'Cobbles cut in half');
+  shaped(B.STAIRS_OAK, 4, ['P  ', 'PP ', 'PPP'], { P: B.PLANKS }, 'Six planks cut into four steps');
+  shaped(B.STAIRS_COBBLE, 4, ['C  ', 'CC ', 'CCC'], { C: B.COBBLESTONE }, 'Six cobbles cut into four steps');
+  shaped(B.STAIRS_N, 4, ['S  ', 'SS ', 'SSS'], { S: B.STONE_BRICKS }, 'Six bricks cut into four steps');
+  shaped(B.TORCH, 4, ['C', 'S'], { C: B.COAL_ORE, S: I.STICK }, 'Coal on a stick, four at a time');
+  shaped(B.PRINTER, 1, ['III', 'IGI', 'ICI'],
+    { I: I.IRON_INGOT, G: B.GLOWSTONE, C: B.CRAFTING_TABLE }, 'A machine that builds what you feed it');
+  shaped(B.TV, 1, ['III', 'IGI', 'III'],
+    { I: I.IRON_INGOT, G: B.GLASS }, 'Eight iron around a pane of glass');
   shaped(B.BOOKSHELF, 1, ['PPP', 'LLL', 'PPP'], { P: ANY_PLANKS, L: I.LEATHER }, 'Planks and bound leather');
   shaped(B.BARREL, 1, ['PPP', 'P P', 'PLP'], { P: ANY_PLANKS, L: B.LOG }, 'Staves and a base');
 

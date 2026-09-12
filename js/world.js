@@ -36,6 +36,8 @@ class World {
     this.villages = new Map();
     this.strongholds = new Map();
     this.chests = new Map();      // "x,y,z" -> [[id, count], ...]        // cached column data, cleared between chunk builds
+    this.darkstones = new Map();  // "x,y,z" -> [x,y,z] for every darkstone placed
+    this.shroud = new Set();      // "x,y,z" of every cell those darkstones hold in the dark
   }
 
   key(cx, cz) { return cx * 100003 + cz; }
@@ -43,7 +45,7 @@ class World {
 
   getBlock(x, y, z) {
     // the End has nothing under it: step off the island and you fall out of the world
-    if (y < 0) return (this.dimension === 'end' || this.dimension === 'bedwars' || this.dimension === 'rush' || this.dimension === 'hunger') ? 0 : B.BEDROCK;
+    if (y < 0) return (this.dimension === 'end' || this.dimension === 'hacker' || this.dimension === 'bedwars' || this.dimension === 'rush' || this.dimension === 'hunger') ? 0 : B.BEDROCK;
     if (y >= CY) return 0;
     const c = this.chunks.get(this.key(x >> 4, z >> 4));
     if (!c) return 0;
@@ -62,6 +64,55 @@ class World {
     const c = this.chunks.get(this.key(x >> 4, z >> 4));
     if (!c) return 0;
     return c.light[idx(x & 15, y, z & 15)];
+  }
+
+  // ---- darkstone --------------------------------------------------------
+  // Darkstone smothers the light for four blocks around it. A lamp, a torch,
+  // anything that gives light of its own within four blocks of a smothered cell
+  // pushes the dark back off that cell again.
+  rebuildShroud() {
+    this.shroud.clear();
+    if (!this.darkstones.size) return;
+    const R = DARK_R;
+    for (const [, [dx, dy, dz]] of this.darkstones) {
+      for (let x = dx - R; x <= dx + R; x++)
+        for (let y = Math.max(0, dy - R); y <= Math.min(CY - 1, dy + R); y++)
+          for (let z = dz - R; z <= dz + R; z++) {
+            if ((x - dx) ** 2 + (y - dy) ** 2 + (z - dz) ** 2 > R * R) continue;
+            this.shroud.add(x + ',' + y + ',' + z);
+          }
+    }
+    // now let every nearby light burn its own hole back through the dark
+    for (const key of [...this.shroud]) {
+      const p = key.split(',');
+      const x = +p[0], y = +p[1], z = +p[2];
+      let lit = false;
+      for (let ax = x - R; ax <= x + R && !lit; ax++)
+        for (let ay = Math.max(0, y - R); ay <= Math.min(CY - 1, y + R) && !lit; ay++)
+          for (let az = z - R; az <= z + R; az++) {
+            if ((ax - x) ** 2 + (ay - y) ** 2 + (az - z) ** 2 > R * R) continue;
+            if (BLOCKS[this.getBlock(ax, ay, az)].light > 0) { lit = true; break; }
+          }
+      if (lit) this.shroud.delete(key);
+    }
+  }
+
+  dark(x, y, z) { return this.shroud.size > 0 && this.shroud.has(x + ',' + y + ',' + z); }
+
+  // Something changed that the shroud depends on: work it out again and relight
+  // every chunk it could possibly touch.
+  refreshDark(x, y, z) {
+    this.rebuildShroud();
+    const R = DARK_R * 2 + 1;
+    const seen = new Set();
+    for (let dx = -R; dx <= R; dx += CX) for (let dz = -R; dz <= R; dz += CX) {
+      const cx = (x + dx) >> 4, cz = (z + dz) >> 4;
+      const key = cx + ':' + cz;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const c = this.getChunk(cx, cz);
+      if (c) this.initLight(c);
+    }
   }
 
   markDirty(x, z) {
@@ -89,6 +140,11 @@ class World {
 
   // ---- terrain ---------------------------------------------------------
   column(wx, wz) {
+    if (this.dimension === 'halloween') return { h: HW_FLOOR, biome: 'plains', temp: 0, humid: 0 };
+    if (this.dimension === 'future') return { h: FT_GROUND, biome: 'city', temp: 0, humid: 0 };
+    if (this.dimension === 'deep') return { h: DEEP_FLOOR, biome: 'deep', temp: 0, humid: 0 };
+    if (this.dimension === 'hacker') return { h: HK_FLOOR, biome: 'grid', temp: 0, humid: 0 };
+    if (this.dimension === 'sea') return { h: Sea.floorAt(this, wx, wz), biome: 'reef', temp: 0, humid: 0 };
     const k = wx * 46349 + wz * 7919;
     let info = this.colInfo.get(k);
     if (info) return info;
@@ -96,22 +152,45 @@ class World {
     const hl = this.nDetail.nfbm2(wx * 0.011, wz * 0.011, 3);          // hills
     const mr = this.nMount.nfbm2(wx * 0.00085 + 40, wz * 0.00085 - 70, 3);
     const mountain = smoothstep(0.2, 0.9, mr);
-    let h = 63 + e * 15 + hl * 4.5 + mountain * mountain * 52;
+    // How broken up the ground is here. Where this runs high the land stops being
+    // gentle: it heaves up into ridges and the stone comes through the turf.
+    const rough = this.nStone.nfbm2(wx * 0.0038 - 1200, wz * 0.0038 + 640, 3);
+    const craggy = Math.max(0, rough - 0.22);
+    let h = 63 + e * 15 + hl * 9 + mountain * mountain * 52 + craggy * 58;
+    // A slower ridge term on top, so hillsides come in steps and shelves. It has
+    // to stay well below one block per column or the ground stops being terrain
+    // and turns into noise.
+    h += this.nDetail.nfbm2(wx * 0.013 + 90, wz * 0.013 - 30, 2) * (2 + craggy * 12);
     h = Math.round(clamp(h, 5, CY - 14));
+    // Broken country is terraced rather than merely bumpy: the height snaps to
+    // shelves, which is what turns a smooth noise field into ledges and cliffs
+    // you can actually stand on the edge of.
+    if (craggy > 0.05 && h > SEA_LEVEL) {
+      const step = 2 + Math.round(Math.min(1, craggy * 3.4) * 4);   // 2 to 6 block shelves
+      h = Math.round(h / step) * step;
+      h = Math.round(clamp(h, 5, CY - 14));
+    }
     // biomes change every few hundred blocks, so a walk crosses several of them
     const temp = this.nTemp.nfbm2(wx * 0.0022 + 500, wz * 0.0022, 3) - Math.max(0, h - 70) * 0.014;
     const humid = this.nHumid.nfbm2(wx * 0.0026 - 800, wz * 0.0026, 3);
     let biome = 'plains';
-    if (h > 92) biome = 'peaks';
+    if (this.dimension === 'dinos') biome = h > 96 ? 'peaks' : 'jungle';
+    else if (h > 92) biome = 'peaks';
     else if (temp < -0.5) biome = 'snowy';
+    else if (craggy > 0.16 && h > SEA_LEVEL + 2) biome = 'rocky';   // the broken country
     else if (temp > 0.42 && humid < 0.06) biome = 'desert';
     else if (humid > 0.25) biome = 'forest';
-    info = { h, biome, temp, humid };
+    info = { h, biome, temp, humid, craggy };
     this.colInfo.set(k, info);
     return info;
   }
 
   generateChunk(cx, cz) {
+    if (this.dimension === 'halloween') return Halloween.generateChunk(this, cx, cz);
+    if (this.dimension === 'future') return Future.generateChunk(this, cx, cz);
+    if (this.dimension === 'deep') return Deep.generateChunk(this, cx, cz);
+    if (this.dimension === 'hacker') return Hacker.generateChunk(this, cx, cz);
+    if (this.dimension === 'sea') return Sea.generateChunk(this, cx, cz);
     if (this.dimension === 'nether') return this.generateNether(cx, cz);
     if (this.dimension === 'end') return this.generateEnd(cx, cz);
     if (this.dimension === 'bedwars' || this.dimension === 'rush') return BedWars.generateChunk(this, cx, cz);
@@ -182,9 +261,14 @@ class World {
             if (biome === 'peaks') id = B.SNOW;
             else if (biome === 'snowy') id = h <= SEA_LEVEL + 1 ? B.SAND : B.SNOW;
             else if (desert) id = B.SAND;
+            else if (biome === 'rocky') {
+              // bare stone, with grass only clinging on where it can
+              const r2 = hash3(wx, 71, wz, this.seed + 63);
+              id = r2 < 0.30 ? B.GRASS : r2 < 0.44 ? B.ANDESITE : r2 < 0.52 ? B.GRAVEL : B.STONE;
+            }
             else id = h <= SEA_LEVEL + 1 ? B.SAND : B.GRASS;
             if (h < SEA_LEVEL && h > SEA_LEVEL - 5 && hash3(wx, 1, wz, this.seed + 8) < 0.10) id = B.CLAY;
-          } else if (y > h - 4) id = desert ? B.SAND : (biome === 'peaks' ? B.STONE : B.DIRT);
+          } else if (y > h - 4) id = desert ? B.SAND : (biome === 'peaks' || biome === 'rocky' ? B.STONE : B.DIRT);
           else if (desert && y > h - 7) id = B.SANDSTONE;
           else id = B.STONE;
 
@@ -240,8 +324,11 @@ class World {
     }
 
     this.decorate(c);
-    this.buildVillages(c);
-    this.buildStrongholds(c);
+    if (this.dimension !== 'dinos') {          // nobody has built anything yet, back then
+      this.buildVillages(c);
+      this.buildStrongholds(c);
+      Deep.buildCities(this, c);
+    }
 
     // apply saved player edits inside this chunk
     if (this.edits.size) {
@@ -390,7 +477,8 @@ class World {
       post: desert ? B.SANDSTONE : B.LOG,
       roof: desert ? B.SANDSTONE : B.SPRUCE_PLANKS,
       path: desert ? B.SAND : B.GRAVEL,
-      buildings: [{ type: 'well', x, z }],
+      // the well in the middle, and a market stall beside it
+      buildings: [{ type: 'well', x, z }, { type: 'stall', x: x + 4, z: z + 1 }],
     };
     const count = 4 + ((hash3(x, 5, z, this.seed + 21) * 4) | 0);
     for (let i = 0; i < count; i++) {
@@ -419,6 +507,7 @@ class World {
       for (const b of v.buildings) {
         if (Math.abs(b.x - (bx + 8)) > 20 || Math.abs(b.z - (bz + 8)) > 20) continue;
         if (b.type === 'well') this.buildWell(c, v, b);
+        else if (b.type === 'stall') this.buildStall(c, v, b);
         else if (b.type === 'farm') this.buildFarm(c, v, b);
         else this.buildHouse(c, v, b);
         this.buildPath(c, v, b);
@@ -695,6 +784,21 @@ class World {
     this.put(c, h.x + 4, base, h.z, B.CHEST);
   }
 
+  // A market stall: a counter under an awning, with a lamp on the post.
+  buildStall(c, v, b) {
+    const y = v.y;
+    for (let dx = -1; dx <= 1; dx++) {
+      this.put(c, b.x + dx, y, b.z, B.SHOP);
+      this.put(c, b.x + dx, y + 3, b.z, v.roof);
+      this.put(c, b.x + dx, y + 3, b.z - 1, v.roof);
+    }
+    for (const dx of [-1, 1]) {
+      this.put(c, b.x + dx, y + 1, b.z - 1, v.post);
+      this.put(c, b.x + dx, y + 2, b.z - 1, v.post);
+    }
+    this.put(c, b.x, y + 2, b.z - 1, B.TORCH);
+  }
+
   decorate(c) {
     const bx = c.cx * CX, bz = c.cz * CZ;
     for (let lz = -3; lz < CZ + 3; lz++) {
@@ -705,9 +809,52 @@ class World {
         if (lx >= 0 && lz >= 0 && lx < CX && lz < CZ && info.biome !== 'desert' && info.biome !== 'peaks'
             && hash3(wx, 11, wz, this.seed + 77) < 0.0022) {
           const gy = info.h + 1;
-          if (c.blocks[idx(lx, info.h, lz)] === B.GRASS && !c.blocks[idx(lx, gy, lz)]) c.blocks[idx(lx, gy, lz)] = B.PUMPKIN;
+          if (c.blocks[idx(lx, info.h, lz)] === B.GRASS && !c.blocks[idx(lx, gy, lz)]) {
+            const rare = hash3(wx, 12, wz, this.seed + 78) < 0.08;   // one in a dozen has red eyes
+            c.blocks[idx(lx, gy, lz)] = rare ? B.PUMPKIN_RED : B.PUMPKIN;
+          }
         }
-        const p = { forest: 0.06, plains: 0.008, snowy: 0.025, desert: 0.02, peaks: 0.01 }[info.biome];
+        // flowers, long grass and bushes across the meadows
+        if (lx >= 0 && lz >= 0 && lx < CX && lz < CZ && info.biome !== 'desert' && info.biome !== 'peaks') {
+          const gy = info.h + 1;
+          if (c.blocks[idx(lx, info.h, lz)] === B.GRASS && !c.blocks[idx(lx, gy, lz)]) {
+            const f = hash3(wx, 19, wz, this.seed + 61);
+            if (f < 0.055) c.blocks[idx(lx, gy, lz)] = B.TALL_GRASS;
+            else if (f < 0.064) c.blocks[idx(lx, gy, lz)] = B.RED_FLOWER;
+            else if (f < 0.072) c.blocks[idx(lx, gy, lz)] = B.YELLOW_FLOWER;
+            // bushes are commonest under the trees, and one in ten is in berry
+            else if (f < 0.072 + (info.biome === 'forest' ? 0.030 : 0.014)) {
+              c.blocks[idx(lx, gy, lz)] =
+                hash3(wx, 20, wz, this.seed + 62) < 0.10 ? B.BERRY_BUSH : B.BUSH;
+            }
+          }
+        }
+
+        // Waterfalls. Where a hillside breaks away, a spring comes out at the lip
+        // and the water is drawn down the face of the drop as a sheet. It is cut
+        // in during generation rather than left to the fluid sim, so it is there
+        // waiting for you rather than arriving once you walk up to it.
+        if (info.h > SEA_LEVEL + 8 && info.biome !== 'desert'
+            && hash3(wx, 23, wz, this.seed + 64) < 0.0075) {
+          let dir = null, drop = 0;
+          for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+            const near = this.column(wx + dx, wz + dz).h;
+            const far = this.column(wx + dx * 3, wz + dz * 3).h;
+            const d = info.h - Math.min(near, far);
+            if (d > drop && near <= info.h) { drop = d; dir = [dx, dz]; }
+          }
+          if (dir && drop >= 4) {
+            const fx = wx + dir[0], fz = wz + dir[1];
+            const foot = Math.min(this.column(fx, fz).h, this.column(wx + dir[0] * 2, wz + dir[1] * 2).h);
+            this.put(c, wx, info.h + 1, wz, B.WATER);            // the spring on the lip
+            for (let y = info.h; y > foot; y--) {                 // and the sheet coming off it
+              this.put(c, fx, y, fz, B.WATER);
+            }
+            this.put(c, fx, foot + 1, fz, B.WATER);              // the pool at the bottom
+          }
+        }
+
+        const p = { forest: 0.06, plains: 0.008, snowy: 0.025, desert: 0.02, peaks: 0.01, jungle: 0.17 }[info.biome];
         if (!p) continue;
         const r = hash3(wx, 7, wz, this.seed + 99);
         if (r > p) continue;
@@ -719,7 +866,8 @@ class World {
         }
         if (!best) continue;
         const roll = hash3(wx, 3, wz, this.seed + 12);
-        if (info.biome === 'desert') this.placeCactus(c, wx, info.h + 1, wz, roll);
+        if (info.biome === 'jungle') this.placeTree(c, wx, info.h + 1, wz, roll, roll < 0.45 ? 'spruce' : 'oak');
+        else if (info.biome === 'desert') this.placeCactus(c, wx, info.h + 1, wz, roll);
         else if (info.biome === 'snowy' || info.biome === 'peaks') this.placeTree(c, wx, info.h + 1, wz, roll, 'spruce');
         else if (info.biome === 'forest' && roll < 0.35) this.placeTree(c, wx, info.h + 1, wz, roll / 0.35, 'birch');
         else this.placeTree(c, wx, info.h + 1, wz, roll, 'oak');
@@ -803,8 +951,9 @@ class World {
         if (b.opaque) level = 0;
         else if (b.liquid) level = Math.max(0, level - 1);
         const i = idx(lx, y, lz);
-        c.light[i] = (level << 4) | b.light;
-        if (level > 0 || b.light > 0) this.pushAdd(bx + lx, y, bz + lz);
+        const smothered = this.dark(bx + lx, y, bz + lz);
+        c.light[i] = smothered ? 0 : ((level << 4) | b.light);
+        if (!smothered && (level > 0 || b.light > 0)) this.pushAdd(bx + lx, y, bz + lz);
         if (level === 0 && !b.light) {
           // everything below an opaque column is dark until the flood fill reaches it
         }
@@ -839,6 +988,7 @@ class World {
         const ni = idx(nx & 15, ny, nz & 15);
         const nb = BLOCKS[nc.blocks[ni]];
         if (nb.opaque) continue;
+        if (this.dark(nx, ny, nz)) continue;           // the dark does not let light in
         const cur = nc.light[ni];
         let changed = false;
         let nsky = cur >> 4, nblk = cur & 15;
@@ -910,6 +1060,12 @@ class World {
       c.hmap[col] = top;
     }
 
+    const key = x + ',' + y + ',' + z;
+    const wasDark = BLOCKS[old].darkstone, nowDark = BLOCKS[id].darkstone;
+    if (nowDark) this.darkstones.set(key, [x, y, z]);
+    else if (wasDark) this.darkstones.delete(key);
+    const lightChanged = BLOCKS[old].light > 0 || BLOCKS[id].light > 0;
+
     this.removeLight(x, y, z);
     if (!BLOCKS[id].opaque) {
       for (let d = 0; d < 6; d++) this.pushAdd(x + DIRS[d][0], y + DIRS[d][1], z + DIRS[d][2]);
@@ -922,6 +1078,7 @@ class World {
     c.dirty = true;
     this.markDirty(x, z);
     if (typeof Fluid !== 'undefined') Fluid.touchAround(this, x, y, z);
+    if (wasDark || nowDark || (lightChanged && this.darkstones.size)) this.refreshDark(x, y, z);
     return true;
   }
 
@@ -945,6 +1102,7 @@ function treeKinds() {
   return TREE_KINDS;
 }
 
+const DARK_R = 4;             // how far darkstone smothers the light
 const VILLAGE_SPACING = 20;   // chunks between village regions
 const STRONGHOLD_SPACING = 28;
 const VILLAGE_RADIUS = 30;

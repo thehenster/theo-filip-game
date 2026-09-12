@@ -68,6 +68,50 @@ function meshChunk(world, chunk) {
         // A liquid's surface sits at its level, unless more liquid covers it.
         const topY = def.liquid ? liquidSurface(world, id, wx, y, wz) : 1;
 
+        // Blocks built out of sub-boxes — stairs — are drawn box by box. A face
+        // is only culled where it sits flush against the cube's own boundary,
+        // and the texture is sliced to match the box so it stays at world scale.
+        if (def.boxes) {
+          for (const bo of def.boxes) {
+            for (let d = 0; d < 6; d++) {
+              const f = FACES[d];
+              const flush = (d === 0 && bo[3] === 1) || (d === 1 && bo[0] === 0) ||
+                            (d === 2 && bo[4] === 1) || (d === 3 && bo[1] === 0) ||
+                            (d === 4 && bo[5] === 1) || (d === 5 && bo[2] === 0);
+              const nx = wx + f.n[0], ny = y + f.n[1], nz = wz + f.n[2];
+              if (flush && BLOCKS[world.getBlockOrSolid(nx, ny, nz)].opaque) continue;
+              const l = flush ? world.getLight(nx, ny, nz) : world.getLight(wx, y, wz);
+              const sky = (l >> 4) / 15, blk = (l & 15) / 15;
+              const layer = def.faces[d];
+              const t1 = f.t[0], t2 = f.t[1];
+              const base = buf.verts;
+              buf.need(4 * FLOATS_PER_VERT);
+              const D = buf.data;
+              let p = buf.len;
+              for (let vi = 0; vi < 4; vi++) {
+                const c = f.v[vi];
+                D[p++] = x + (c[0] ? bo[3] : bo[0]);
+                D[p++] = y + (c[1] ? bo[4] : bo[1]);
+                D[p++] = z + (c[2] ? bo[5] : bo[2]);
+                D[p++] = bo[t1] + FACE_UV[vi][0] * (bo[t1 + 3] - bo[t1]);
+                D[p++] = bo[t2] + FACE_UV[vi][1] * (bo[t2 + 3] - bo[t2]);
+                D[p++] = layer;
+                D[p++] = f.shade;
+                D[p++] = sky; D[p++] = blk;
+              }
+              buf.len = p;
+              buf.verts += 4;
+              buf.needIdx(6);
+              const I2 = buf.idx;
+              let q2 = buf.ilen;
+              I2[q2++] = base; I2[q2++] = base + 1; I2[q2++] = base + 2;
+              I2[q2++] = base; I2[q2++] = base + 2; I2[q2++] = base + 3;
+              buf.ilen = q2;
+            }
+          }
+          continue;
+        }
+
         for (let d = 0; d < 6; d++) {
           const f = FACES[d];
           const nx = wx + f.n[0], ny = y + f.n[1], nz = wz + f.n[2];

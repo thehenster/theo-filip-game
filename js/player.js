@@ -1,5 +1,6 @@
 // Player movement, AABB collision against voxels, and block picking.
 const P_HALF = 0.3, P_HEIGHT = 1.8, P_EYE = 1.62;
+const STEP_UP = 0.55;         // how high a lip you can walk straight up
 const GRAVITY = 30, JUMP_V = 8.6, TERMINAL = 55;
 
 class Player {
@@ -15,17 +16,22 @@ class Player {
     this.reach = 5.5;
     this.maxHp = 20; this.hp = 20;
     this.air = 15; this.maxAir = 15;         // seconds of breath
+    this.food = 20; this.maxFood = 20;       // and how long since you last ate
+    this.water = 20; this.maxWater = 20;     // and drank, which goes first
+    this.exert = 0;                          // work done since the last tick
     this.fallFrom = null;
     this.groundY = null;          // level of the block last stood on, for bridging
     this.hurtFlash = 0; this.invuln = 0; this.sinceHurt = 99;
     this.dead = false;
     this.invulnerable = false;    // creative mode sets this
+    this.shield = 0;              // seconds of Warden's Plate left
+    this.noFall = false;          // the next landing is free, however far it was
     this.spawn = null;
   }
 
   // Damage in half-hearts; armour soaks up its share first.
   damage(amount, reason) {
-    if (this.dead || this.invuln > 0 || this.invulnerable) return 0;
+    if (this.dead || this.invuln > 0 || this.invulnerable || this.shield > 0) return 0;
     const taken = Math.max(0, Math.round(Equipment.absorb(amount)));
     if (taken <= 0) { this.sinceHurt = 0; return 0; }
     this.hp = Math.max(0, this.hp - taken);
@@ -33,12 +39,14 @@ class Player {
     this.hurtFlash = 0.4;
     this.sinceHurt = 0;
     this.lastHurtReason = reason;
+    if (typeof Deep !== 'undefined' && typeof Game !== 'undefined') Deep.stir(Game, 12);   // crying out is a noise
     if (this.hp <= 0) this.dead = true;
     return taken;
   }
   heal(n) { this.hp = Math.min(this.maxHp, this.hp + n); }
   respawn() {
     this.hp = this.maxHp; this.air = this.maxAir;
+    this.food = this.maxFood; this.water = this.maxWater; this.exert = 0;
     this.dead = false; this.invuln = 1; this.fallFrom = null;
     this.vel = [0, 0, 0];
     if (this.spawn) this.pos = this.spawn.slice();
@@ -57,8 +65,10 @@ class Player {
     const z0 = Math.floor(z - P_HALF), z1 = Math.floor(z + P_HALF);
     for (let yy = y0; yy <= y1; yy++)
       for (let zz = z0; zz <= z1; zz++)
-        for (let xx = x0; xx <= x1; xx++)
-          if (isSolid(w.getBlock(xx, yy, zz))) return true;
+        for (let xx = x0; xx <= x1; xx++) {
+          const id = w.getBlock(xx, yy, zz);
+          if (id && blockHits(id, xx, yy, zz, x - P_HALF, y, z - P_HALF, x + P_HALF, y + P_HEIGHT, z + P_HALF)) return true;
+        }
     return false;
   }
 
@@ -68,6 +78,14 @@ class Player {
     const before = p[axis];
     p[axis] += amount;
     if (this.collides(p[0], p[1], p[2])) {
+      // A step half a block high is walked up, not jumped over — which is what
+      // makes a staircase a staircase.
+      if (axis !== 1 && !this.flying && this.vel[1] <= 0.01) {
+        const wasY = p[1];
+        p[1] += STEP_UP;
+        if (!this.collides(p[0], p[1], p[2])) return;
+        p[1] = wasY;
+      }
       p[axis] = before;
       if (axis === 1) {
         if (amount < 0) this.onGround = true;
@@ -128,10 +146,31 @@ class Player {
       if (input.jump) this.vel[1] = 4.2;
       this.vel[1] = clamp(this.vel[1], -4.5, 5);
       this.vel[0] *= 0.98; this.vel[2] *= 0.98;
+    } else if (this.onLadder()) {
+      // hands and feet: you go up while you hold forward or jump, and down slowly otherwise
+      const climbing = input.jump || input.forward;
+      this.vel[1] = input.sneak ? -1.4 : (climbing ? 3.4 : -1.2);
+      this.fallFrom = null;
     } else {
-      if (this.onGround && input.jump) { this.vel[1] = JUMP_V; this.onGround = false; }
-      this.vel[1] -= GRAVITY * dt;
-      if (this.vel[1] < -TERMINAL) this.vel[1] = -TERMINAL;
+      // The Solytra. Hold jump while you are falling and the wings take: you
+      // trade height for speed looking down, and speed for height looking up.
+      const wings = Equipment.chest && itemDef(Equipment.chest) && itemDef(Equipment.chest).glide;
+      if (wings && !this.onGround && input.jump && this.vel[1] < 1.5) {
+        const d = this.dir;
+        const sp = clamp((this.glideSpeed || 12) + (-d[1]) * 30 * dt - 2.2 * dt, 8, 30);
+        this.glideSpeed = sp;
+        this.gliding = true;
+        this.vel[0] = d[0] * sp;
+        this.vel[2] = d[2] * sp;
+        this.vel[1] = d[1] * sp - 1.6;
+        this.fallFrom = null;              // you land on the wings, not on your legs
+      } else {
+        this.gliding = false;
+        this.glideSpeed = 0;
+        if (this.onGround && input.jump) { this.vel[1] = JUMP_V; this.onGround = false; }
+        this.vel[1] -= GRAVITY * dt;
+        if (this.vel[1] < -TERMINAL) this.vel[1] = -TERMINAL;
+      }
     }
 
     // Sneaking holds you on the block you are standing on rather than letting you
@@ -170,6 +209,7 @@ class Player {
 
   updateVitals(dt, w) {
     this.invuln = Math.max(0, this.invuln - dt);
+    this.shield = Math.max(0, this.shield - dt);
     this.hurtFlash = Math.max(0, this.hurtFlash - dt);
     this.sinceHurt += dt;
 
@@ -179,15 +219,37 @@ class Player {
     } else if (this.onGround) {
       if (this.fallFrom !== null) {
         const drop = this.fallFrom - this.pos[1];
-        if (drop > 3.5) this.damage(Math.floor(drop - 3), 'the fall');
+        if (this.noFall) this.noFall = false;
+        else if (drop > 3.5) this.damage(Math.floor(drop - 3), 'the fall');
       }
       this.fallFrom = this.pos[1];
     } else {
       this.fallFrom = this.fallFrom === null ? this.pos[1] : Math.max(this.fallFrom, this.pos[1]);
     }
 
-    // breath
-    if (this.headInWater) {
+    // Hunger and thirst. Thirst runs down about half again as fast as hunger,
+    // and running about empties both quicker than standing still does. Well fed
+    // and watered, you heal; empty, you do not, and then you start to suffer.
+    if (!this.invulnerable && !this.dead) {
+      const hspeed = Math.hypot(this.vel[0], this.vel[2]);
+      const work = 1 + (hspeed > 5 ? 1.9 : hspeed > 1 ? 0.5 : 0);
+      // A full bar is about a quarter of an hour of pottering about, rather less
+      // if you spend it running, and thirst always goes before hunger does.
+      this.food = Math.max(0, this.food - dt * 0.020 * work);
+      this.water = Math.max(0, this.water - dt * 0.030 * work);
+      this.starveTick = (this.starveTick || 0) + dt;
+      if (this.starveTick >= 2) {
+        this.starveTick = 0;
+        if (this.food > 6 && this.water > 6 && this.hp < this.maxHp) this.heal(1);
+        else if (this.water <= 0) { this.invuln = 0; this.damage(1, 'thirst'); }
+        else if (this.food <= 0) { this.invuln = 0; this.damage(1, 'hunger'); }
+      }
+    }
+
+    // breath. Poseidon's water is the exception: down there you simply do not
+    // need to come up, which is the only reason the place is playable at all.
+    const blessed = this.world && this.world.dimension === 'sea';
+    if (this.headInWater && !blessed) {
       this.air -= dt;
       if (this.air <= 0) {
         this.drownTick = (this.drownTick || 0) + dt;
@@ -215,7 +277,9 @@ class Player {
       if (this.cactusTick >= 0.6) { this.cactusTick = 0; this.invuln = 0; this.damage(1, 'a cactus'); }
     } else this.cactusTick = 0;
 
-    if (this.hp < this.maxHp && this.sinceHurt > 6 && !this.dead) this.hp = Math.min(this.maxHp, this.hp + dt * 0.6);
+    // The slow natural mend, but only if you are fed and watered enough for it.
+    const fed = this.invulnerable || (this.food > 6 && this.water > 6);
+    if (fed && this.hp < this.maxHp && this.sinceHurt > 6 && !this.dead) this.hp = Math.min(this.maxHp, this.hp + dt * 0.6);
   }
 
   // Voxel DDA. Returns the hit block, the face normal, and where to place.
@@ -246,6 +310,19 @@ class Player {
       }
     }
     return null;
+  }
+
+  // Standing in the same cell as a ladder is what counts as being on it.
+  onLadder() {
+    const w = this.world;
+    for (let yy = Math.floor(this.pos[1]); yy <= Math.floor(this.pos[1] + P_HEIGHT - 0.001); yy++) {
+      for (let zz = Math.floor(this.pos[2] - P_HALF); zz <= Math.floor(this.pos[2] + P_HALF); zz++) {
+        for (let xx = Math.floor(this.pos[0] - P_HALF); xx <= Math.floor(this.pos[0] + P_HALF); xx++) {
+          if (BLOCKS[w.getBlock(xx, yy, zz)].ladder) return true;
+        }
+      }
+    }
+    return false;
   }
 
   // Is anything solid directly under the player's feet?

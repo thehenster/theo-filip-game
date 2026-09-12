@@ -455,6 +455,649 @@ function defineAnimals() {
     },
   });
 
+  // ---- the age of the dinosaurs ----------------------------------------
+  defineMob('stegosaurus', {
+    label: 'Stegosaurus', width: 1.4, height: 1.9, speed: 0.7, eyeH: 1.5, grazes: true,
+    hp: 30, loot: () => [[I.BEEF, 2, 4], [I.LEATHER, 1, 3]],
+    spawn: { jungle: 1.5 }, groupMax: 3, call: 'moo',
+    parts: [
+      { id: 'body', size: [12, 12, 24], pos: [0, 18, 0] },
+      { id: 'neck', size: [6, 6, 8], pos: [0, 18, -15] },
+      { id: 'head', size: [6, 5, 8], pos: [0, 16, -22], anim: 'head' },
+      { id: 'tail', size: [6, 6, 16], pos: [0, 20, 18] },
+      { id: 'plateA', size: [1, 7, 6], pos: [0, 29, -6] },
+      { id: 'plateB', size: [1, 8, 6], pos: [0, 30, 1], share: 'plate' },
+      { id: 'plateC', size: [1, 6, 6], pos: [0, 28, 8] },
+      { id: 'legFL', size: [5, 12, 5], pos: [-4, 6, -8], pivot: [0, 6, 0], anim: 'legA', share: 'leg' },
+      { id: 'legFR', size: [5, 12, 5], pos: [4, 6, -8], pivot: [0, 6, 0], anim: 'legB', share: 'leg' },
+      { id: 'legBL', size: [5, 12, 5], pos: [-4, 6, 8], pivot: [0, 6, 0], anim: 'legB', share: 'leg' },
+      { id: 'legBR', size: [5, 12, 5], pos: [4, 6, 8], pivot: [0, 6, 0], anim: 'legA', share: 'leg' },
+    ],
+    paint(t, P) {
+      const hide = [96, 118, 74], belly = [138, 146, 104], plate = [176, 122, 66];
+      t.fill(hide);
+      t.part(P.body, hide, { top: 1.15, bottom: 0.82 });
+      t.face(P.body.rects.ny, belly, { top: 0.98, bottom: 0.92 });
+      t.part(P.neck, hide); t.part(P.tail, hide);
+      t.part(P.head, hide);
+      t.part(P.legFL, [82, 100, 62]);
+      t.part(P.plateA, plate); t.part(P.plateB, plate); t.part(P.plateC, plate);
+      for (const k of ['px', 'nx', 'py']) {                      // mottling along the flanks
+        const r = P.body.rects[k];
+        for (let i = 0; i < 6; i++) {
+          t.patch(r, 2 + ((t.rnd() * (r[2] - 4)) | 0), 2 + ((t.rnd() * (r[3] - 4)) | 0), 1 + t.rnd(), [76, 96, 58]);
+        }
+      }
+      t.eyes(P.head.rects.nz, 1, [40, 34, 26], { y: 1 });
+    },
+  });
+
+  defineMob('raptor', {
+    label: 'Raptor', width: 0.8, height: 1.5, speed: 1.9, eyeH: 1.35,
+    hp: 16, damage: 4, hostile: true,
+    loot: () => [[I.BEEF, 1, 2], [I.FEATHER, 1, 3]],
+    spawn: { jungle: 1.1 }, groupMax: 4, call: 'cluck',
+    parts: [
+      { id: 'body', size: [6, 8, 14], pos: [0, 16, 0] },
+      { id: 'neck', size: [4, 6, 4], pos: [0, 21, -8] },
+      { id: 'head', size: [5, 5, 9], pos: [0, 23, -13], anim: 'head' },
+      { id: 'jaw', size: [4, 2, 7], pos: [0, 20, -14], anim: 'head' },
+      { id: 'tail', size: [4, 4, 16], pos: [0, 16, 13] },
+      { id: 'armL', size: [2, 6, 2], pos: [-4, 16, -5], pivot: [0, 3, 0], anim: 'legB', share: 'arm' },
+      { id: 'armR', size: [2, 6, 2], pos: [4, 16, -5], pivot: [0, 3, 0], anim: 'legA', share: 'arm' },
+      { id: 'legL', size: [4, 12, 5], pos: [-3, 6, 2], pivot: [0, 6, 0], anim: 'legA', share: 'leg' },
+      { id: 'legR', size: [4, 12, 5], pos: [3, 6, 2], pivot: [0, 6, 0], anim: 'legB', share: 'leg' },
+    ],
+    paint(t, P) {
+      const hide = [148, 106, 62], stripe = [92, 62, 38], belly = [196, 172, 128];
+      t.fill(hide);
+      t.part(P.body, hide, { top: 1.14, bottom: 0.84 });
+      t.face(P.body.rects.ny, belly, { top: 0.98, bottom: 0.93 });
+      t.part(P.neck, hide); t.part(P.tail, hide); t.part(P.head, hide);
+      t.part(P.jaw, [166, 126, 84]);
+      t.part(P.legL, hide); t.part(P.armL, hide);
+      for (const k of ['px', 'nx']) {                            // tiger stripes down the flanks
+        const r = P.body.rects[k];
+        for (let i = 1; i < 5; i++) t.rect(r, stripe, 6, Math.round(r[2] * i / 5), 1, 1, r[3] - 2);
+      }
+      const f = P.head.rects.nz;
+      t.eyes(f, 1, [212, 84, 40], { y: 1 });
+      t.rect(P.jaw.rects.py, [244, 240, 232], 0, 1, 1, P.jaw.rects.py[2] - 2, 1);   // teeth
+    },
+  });
+
+  defineMob('tyrannosaur', {
+    label: 'Tyrannosaur', width: 1.8, height: 3.4, speed: 1.25, eyeH: 3,
+    hp: 70, damage: 9, hostile: true,
+    loot: () => [[I.BEEF, 4, 7], [I.LEATHER, 2, 4]],
+    spawn: { jungle: 0.5 }, groupMax: 1, call: 'roar',
+    parts: [
+      { id: 'body', size: [14, 16, 26], pos: [0, 30, 0] },
+      { id: 'neck', size: [8, 10, 8], pos: [0, 38, -15] },
+      { id: 'head', size: [10, 10, 18], pos: [0, 42, -25], anim: 'head' },
+      { id: 'jaw', size: [8, 4, 15], pos: [0, 36, -26], anim: 'head' },
+      { id: 'tail', size: [8, 8, 24], pos: [0, 30, 24] },
+      { id: 'armL', size: [2, 7, 2], pos: [-7, 30, -8], pivot: [0, 3, 0], anim: 'legB', share: 'arm' },
+      { id: 'armR', size: [2, 7, 2], pos: [7, 30, -8], pivot: [0, 3, 0], anim: 'legA', share: 'arm' },
+      { id: 'legL', size: [7, 20, 9], pos: [-5, 10, 3], pivot: [0, 10, 0], anim: 'legA', share: 'leg' },
+      { id: 'legR', size: [7, 20, 9], pos: [5, 10, 3], pivot: [0, 10, 0], anim: 'legB', share: 'leg' },
+    ],
+    paint(t, P) {
+      const hide = [86, 92, 78], back = [58, 64, 52], belly = [146, 142, 116];
+      t.fill(hide);
+      t.part(P.body, hide, { top: 1.2, bottom: 0.78 });
+      t.face(P.body.rects.py, back);
+      t.face(P.body.rects.ny, belly, { top: 0.98, bottom: 0.92 });
+      t.part(P.neck, hide); t.part(P.tail, hide); t.part(P.head, hide);
+      t.face(P.head.rects.py, back);
+      t.part(P.jaw, [104, 108, 90]);
+      t.part(P.legL, hide); t.part(P.armL, hide);
+      for (const k of ['px', 'nx']) {
+        const r = P.body.rects[k];
+        for (let i = 0; i < 7; i++) {
+          t.patch(r, 2 + ((t.rnd() * (r[2] - 4)) | 0), 1 + ((t.rnd() * (r[3] - 3)) | 0), 1 + t.rnd(), back);
+        }
+      }
+      const f = P.head.rects.nz;
+      t.eyes(f, 2, [230, 176, 40], { y: 2 });
+      t.rect(P.jaw.rects.py, [246, 242, 232], 0, 1, 1, P.jaw.rects.py[2] - 2, 1);
+      t.rect(P.head.rects.ny, [246, 242, 232], 0, 1, 1, P.head.rects.ny[2] - 2, 1);
+    },
+  });
+
+  // ---- three more out of the age of the dinosaurs -------------------------
+  defineMob('triceratops', {
+    label: 'Triceratops', width: 1.6, height: 2.0, speed: 0.85, eyeH: 1.7, grazes: true,
+    hp: 60, damage: 7, loot: () => [[I.BEEF, 3, 6], [I.LEATHER, 2, 4]],
+    spawn: { jungle: 1.5, peaks: 0.4 }, groupMax: 2, call: 'groan',
+    parts: [
+      { id: 'body', size: [16, 16, 26], pos: [0, 20, 0] },
+      { id: 'head', size: [12, 12, 12], pos: [0, 18, -19], anim: 'head' },
+      { id: 'frill', size: [22, 20, 2], pos: [0, 22, -13], anim: 'head' },
+      { id: 'hornL', size: [2, 8, 2], pos: [-4, 26, -24], anim: 'head' },
+      { id: 'hornR', size: [2, 8, 2], pos: [4, 26, -24], anim: 'head' },
+      { id: 'beak', size: [5, 4, 5], pos: [0, 14, -24], anim: 'head' },
+      { id: 'tail', size: [7, 7, 12], pos: [0, 20, 18], pivot: [0, 0, -6], anim: 'legA' },
+      { id: 'legFL', size: [5, 12, 5], pos: [-6, 6, -8], pivot: [0, 6, 0], anim: 'legA', share: 'leg' },
+      { id: 'legFR', size: [5, 12, 5], pos: [6, 6, -8], pivot: [0, 6, 0], anim: 'legB', share: 'leg' },
+      { id: 'legBL', size: [6, 12, 6], pos: [-6, 6, 9], pivot: [0, 6, 0], anim: 'legB', share: 'leg' },
+      { id: 'legBR', size: [6, 12, 6], pos: [6, 6, 9], pivot: [0, 6, 0], anim: 'legA', share: 'leg' },
+    ],
+    paint(t, P) {
+      const hide = [116, 128, 92], dark = [78, 88, 62], frill = [168, 96, 84], horn = [232, 224, 202];
+      t.fill(hide);
+      t.part(P.body, hide, { top: 1.2, bottom: 0.72 });
+      t.part(P.head, hide);
+      t.part(P.frill, frill, { top: 1.24, bottom: 0.8 });
+      for (let i = 0; i < 14; i++) {                              // knobbles round the frill
+        const r = P.frill.rects.nz;
+        t.patch(r, 1 + ((t.rnd() * (r[2] - 2)) | 0), 1 + ((t.rnd() * (r[3] - 2)) | 0), 0, horn);
+      }
+      t.part(P.hornL, horn);
+      t.part(P.beak, [206, 196, 172]);
+      t.part(P.tail, hide);
+      t.part(P.legFL, dark);
+      for (let i = 0; i < 22; i++) {                              // scale mottling
+        const r = P.body.rects[['nx', 'px', 'py'][(t.rnd() * 3) | 0]];
+        t.patch(r, 1 + ((t.rnd() * (r[2] - 2)) | 0), 1 + ((t.rnd() * (r[3] - 2)) | 0), 1, dark);
+      }
+      t.eyes(P.head.rects.nz, 2, [222, 176, 60], { y: 2 });
+    },
+  });
+
+  defineMob('pterodactyl', {
+    label: 'Pterodactyl', width: 1.2, height: 1.0, speed: 1.7, eyeH: 0.8, flaps: true,
+    hp: 14, damage: 4, hostile: true, loot: () => [[I.FEATHER, 2, 4], [I.CHICKEN, 1, 2]],
+    spawn: { jungle: 0.9, peaks: 1.2 }, groupMax: 3, call: 'hiss',
+    parts: [
+      { id: 'body', size: [6, 6, 14], pos: [0, 8, 0] },
+      { id: 'head', size: [5, 5, 6], pos: [0, 10, -9], anim: 'head' },
+      { id: 'beak', size: [2, 2, 11], pos: [0, 9, -17], anim: 'head' },
+      { id: 'crest', size: [1, 6, 7], pos: [0, 14, -8], anim: 'head' },
+      { id: 'wingL', size: [22, 1, 12], pos: [-14, 10, 0], pivot: [11, 0, 0], anim: 'legA' },
+      { id: 'wingR', size: [22, 1, 12], pos: [14, 10, 0], pivot: [-11, 0, 0], anim: 'legB' },
+      { id: 'legL', size: [2, 5, 2], pos: [-2, 3, 3], pivot: [0, 3, 0], anim: 'legA', share: 'leg' },
+      { id: 'legR', size: [2, 5, 2], pos: [2, 3, 3], pivot: [0, 3, 0], anim: 'legB', share: 'leg' },
+    ],
+    paint(t, P) {
+      const hide = [138, 108, 78], wing = [110, 84, 62], crest = [206, 88, 62];
+      t.fill(hide);
+      t.part(P.body, hide, { top: 1.16, bottom: 0.78 });
+      t.part(P.head, hide);
+      t.part(P.beak, [226, 214, 186]);
+      t.part(P.crest, crest);
+      t.part(P.wingL, wing, { top: 1.1, bottom: 0.86 });
+      for (const k of ['py', 'ny']) {                             // the fingers in the membrane
+        const r = P.wingL.rects[k];
+        for (let x = 2; x < r[2]; x += 4) t.rect(r, [72, 54, 40], 0, x, 0, 1, r[3]);
+      }
+      t.eyes(P.head.rects.nz, 1, [236, 196, 70], { y: 1 });
+    },
+  });
+
+  defineMob('brachiosaurus', {
+    label: 'Brachiosaurus', width: 2.4, height: 5.4, speed: 0.7, eyeH: 5.0, grazes: true,
+    hp: 110, damage: 6, loot: () => [[I.BEEF, 6, 10], [I.LEATHER, 4, 7]],
+    spawn: { jungle: 0.55 }, groupMax: 2, call: 'groan',
+    parts: [
+      { id: 'body', size: [20, 20, 34], pos: [0, 34, 0] },
+      { id: 'neck', size: [8, 30, 8], pos: [0, 56, -14], pivot: [0, -15, 0], anim: 'head' },
+      { id: 'head', size: [7, 7, 11], pos: [0, 74, -17], anim: 'head' },
+      { id: 'tail', size: [9, 9, 26], pos: [0, 34, 28], pivot: [0, 0, -13], anim: 'legA' },
+      { id: 'legFL', size: [7, 26, 7], pos: [-8, 13, -11], pivot: [0, 13, 0], anim: 'legA', share: 'leg' },
+      { id: 'legFR', size: [7, 26, 7], pos: [8, 13, -11], pivot: [0, 13, 0], anim: 'legB', share: 'leg' },
+      { id: 'legBL', size: [8, 24, 8], pos: [-8, 12, 12], pivot: [0, 12, 0], anim: 'legB', share: 'leg' },
+      { id: 'legBR', size: [8, 24, 8], pos: [8, 12, 12], pivot: [0, 12, 0], anim: 'legA', share: 'leg' },
+    ],
+    paint(t, P) {
+      const hide = [108, 122, 136], pale = [176, 186, 194], dark = [72, 84, 96];
+      t.fill(hide);
+      t.part(P.body, hide, { top: 1.22, bottom: 0.7 });
+      t.face(P.body.rects.ny, pale, { top: 1, bottom: 0.94 });
+      t.part(P.neck, hide);
+      t.part(P.head, hide);
+      t.part(P.tail, hide);
+      t.part(P.legFL, dark);
+      for (let i = 0; i < 26; i++) {                              // big soft blotches
+        const r = P.body.rects[['nx', 'px', 'py'][(t.rnd() * 3) | 0]];
+        t.patch(r, 1 + ((t.rnd() * (r[2] - 2)) | 0), 1 + ((t.rnd() * (r[3] - 2)) | 0), 2, dark);
+      }
+      t.eyes(P.head.rects.nz, 1, [40, 34, 30], { y: 1 });
+    },
+  });
+
+  // ---- what is still walking about in the future -------------------------
+  defineMob('sentry', {
+    label: 'Sentry', width: 0.7, height: 1.85, speed: 1.05, eyeH: 1.6,
+    hp: 26, damage: 5, hostile: true,
+    loot: () => [[B.CIRCUIT, 1, 2], [I.IRON_INGOT, 1, 3]],
+    spawn: { city: 0.75 }, groupMax: 2, call: 'beep',
+    parts: [
+      { id: 'legL', size: [4, 10, 4], pos: [-3, 5, 0], pivot: [0, 5, 0], anim: 'legA', share: 'leg' },
+      { id: 'legR', size: [4, 10, 4], pos: [3, 5, 0], pivot: [0, 5, 0], anim: 'legB', share: 'leg' },
+      { id: 'body', size: [10, 12, 6], pos: [0, 16, 0] },
+      { id: 'armL', size: [3, 11, 3], pos: [-6, 16, 0], pivot: [0, 5, 0], anim: 'legB', share: 'arm' },
+      { id: 'armR', size: [3, 11, 3], pos: [6, 16, 0], pivot: [0, 5, 0], anim: 'legA', share: 'arm' },
+      { id: 'head', size: [8, 6, 8], pos: [0, 25, 0], anim: 'head' },
+    ],
+    paint(t, P) {
+      const steel = [138, 144, 152], dark = [86, 90, 98], rust = [124, 88, 62];
+      t.fill(steel);
+      t.part(P.body, steel, { top: 1.16, bottom: 0.82 });
+      t.part(P.legL, dark);
+      t.part(P.armL, dark);
+      t.part(P.head, steel);
+      for (const k of FACE_KEY) {                                   // panel seams
+        const r = P.body.rects[k];
+        t.band(r, Math.round(r[3] * 0.45), 1, dark, 2);
+      }
+      for (let i = 0; i < 6; i++) {                                 // weathering
+        const r = P.body.rects[['nx', 'px', 'nz', 'pz'][(t.rnd() * 4) | 0]];
+        t.patch(r, 1 + ((t.rnd() * (r[2] - 2)) | 0), 1 + ((t.rnd() * (r[3] - 2)) | 0), 1, rust);
+      }
+      const f = P.head.rects.nz;
+      t.rect(f, [24, 26, 30], 0, 1, 2, f[2] - 2, 2);                // the visor
+      t.rect(f, [232, 64, 52], 0, 2, 2, 2, 2);                      // and the eye in it
+      t.rect(f, [255, 150, 140], 0, 2, 2, 1, 1);
+      t.rect(P.body.rects.nz, [92, 226, 140], 0, 4, 3, 2, 1);       // a status light
+    },
+  });
+
+  defineMob('scrapbot', {
+    label: 'Scrapbot', width: 0.6, height: 0.8, speed: 1.35, eyeH: 0.6,
+    hp: 10, loot: () => [[B.CIRCUIT, 1, 1], [I.IRON_INGOT, 1, 2]],
+    spawn: { city: 1.1 }, groupMax: 3, call: 'beep',
+    parts: [
+      { id: 'body', size: [8, 6, 10], pos: [0, 7, 0] },
+      { id: 'head', size: [5, 4, 4], pos: [0, 11, -4], anim: 'head' },
+      { id: 'legFL', size: [2, 4, 2], pos: [-3, 2, -3], pivot: [0, 2, 0], anim: 'legA', share: 'leg' },
+      { id: 'legFR', size: [2, 4, 2], pos: [3, 2, -3], pivot: [0, 2, 0], anim: 'legB', share: 'leg' },
+      { id: 'legBL', size: [2, 4, 2], pos: [-3, 2, 3], pivot: [0, 2, 0], anim: 'legB', share: 'leg' },
+      { id: 'legBR', size: [2, 4, 2], pos: [3, 2, 3], pivot: [0, 2, 0], anim: 'legA', share: 'leg' },
+    ],
+    paint(t, P) {
+      const shell = [176, 152, 84], dark = [92, 84, 60];
+      t.fill(shell);
+      t.part(P.body, shell, { top: 1.18, bottom: 0.8 });
+      t.part(P.head, dark);
+      t.part(P.legFL, dark);
+      t.face(P.body.rects.py, [206, 184, 110]);
+      for (const k of ['px', 'nx']) t.band(P.body.rects[k], 2, 1, dark, 2);
+      t.rect(P.head.rects.nz, [96, 226, 236], 0, 1, 1, 3, 2);       // one wide blue eye
+      t.rect(P.head.rects.nz, [230, 255, 255], 0, 1, 1, 1, 1);
+    },
+  });
+
+  // ---- more of the overworld ---------------------------------------------
+  defineMob('fox', {
+    label: 'Fox', width: 0.7, height: 0.7, speed: 1.5, eyeH: 0.55,
+    hp: 10, loot: () => [[I.LEATHER, 1, 1]],
+    spawn: { forest: 1.1, snowy: 0.7, rocky: 0.5 }, groupMax: 2, call: 'oink',
+    parts: [
+      { id: 'body', size: [7, 6, 13], pos: [0, 8, 0] },
+      { id: 'head', size: [7, 6, 6], pos: [0, 10, -9], anim: 'head' },
+      { id: 'snout', size: [3, 3, 3], pos: [0, 9, -13], anim: 'head' },
+      { id: 'earL', size: [2, 3, 1], pos: [-2, 14, -8], anim: 'head' },
+      { id: 'earR', size: [2, 3, 1], pos: [2, 14, -8], anim: 'head' },
+      { id: 'tail', size: [4, 4, 9], pos: [0, 9, 9], pivot: [0, 0, -4], anim: 'legA' },
+      { id: 'legFL', size: [2, 6, 2], pos: [-2, 3, -4], pivot: [0, 3, 0], anim: 'legA', share: 'leg' },
+      { id: 'legFR', size: [2, 6, 2], pos: [2, 3, -4], pivot: [0, 3, 0], anim: 'legB', share: 'leg' },
+      { id: 'legBL', size: [2, 6, 2], pos: [-2, 3, 4], pivot: [0, 3, 0], anim: 'legB', share: 'leg' },
+      { id: 'legBR', size: [2, 6, 2], pos: [2, 3, 4], pivot: [0, 3, 0], anim: 'legA', share: 'leg' },
+    ],
+    paint(t, P) {
+      const rust = [206, 118, 56], cream = [242, 232, 216], dark = [58, 44, 38];
+      t.fill(rust);
+      t.part(P.body, rust, { top: 1.14, bottom: 0.8 });
+      t.face(P.body.rects.ny, cream, { top: 1, bottom: 0.95 });
+      t.part(P.head, rust);
+      t.part(P.snout, cream);
+      t.part(P.earL, dark);
+      t.part(P.tail, rust);
+      t.face(P.tail.rects.pz, cream);
+      t.part(P.legFL, dark);
+      t.eyes(P.head.rects.nz, 2, [40, 32, 30], { y: 2 });
+      t.dot(P.snout.rects.nz, 1, 0, dark);
+    },
+  });
+
+  defineMob('deer', {
+    label: 'Deer', width: 0.9, height: 1.5, speed: 1.2, eyeH: 1.3, grazes: true,
+    hp: 14, loot: () => [[I.BEEF, 1, 2], [I.LEATHER, 1, 2]],
+    spawn: { forest: 1.0, plains: 0.6, rocky: 0.4 }, groupMax: 3, call: 'hmm',
+    parts: [
+      { id: 'body', size: [8, 9, 16], pos: [0, 16, 0] },
+      { id: 'neck', size: [4, 8, 4], pos: [0, 22, -7], anim: 'head' },
+      { id: 'head', size: [5, 5, 8], pos: [0, 26, -10], anim: 'head' },
+      { id: 'antlerL', size: [1, 7, 5], pos: [-2, 31, -9], anim: 'head' },
+      { id: 'antlerR', size: [1, 7, 5], pos: [2, 31, -9], anim: 'head' },
+      { id: 'legFL', size: [3, 12, 3], pos: [-3, 6, -5], pivot: [0, 6, 0], anim: 'legA', share: 'leg' },
+      { id: 'legFR', size: [3, 12, 3], pos: [3, 6, -5], pivot: [0, 6, 0], anim: 'legB', share: 'leg' },
+      { id: 'legBL', size: [3, 12, 3], pos: [-3, 6, 5], pivot: [0, 6, 0], anim: 'legB', share: 'leg' },
+      { id: 'legBR', size: [3, 12, 3], pos: [3, 6, 5], pivot: [0, 6, 0], anim: 'legA', share: 'leg' },
+    ],
+    paint(t, P) {
+      const coat = [162, 116, 74], pale = [226, 210, 186], horn = [206, 188, 154];
+      t.fill(coat);
+      t.part(P.body, coat, { top: 1.16, bottom: 0.78 });
+      t.face(P.body.rects.ny, pale, { top: 1, bottom: 0.95 });
+      for (let i = 0; i < 12; i++) {                              // dapples along the flanks
+        const r = P.body.rects[t.rnd() < 0.5 ? 'nx' : 'px'];
+        t.patch(r, 1 + ((t.rnd() * (r[2] - 2)) | 0), 1 + ((t.rnd() * (r[3] - 2)) | 0), 0, pale);
+      }
+      t.part(P.neck, coat);
+      t.part(P.head, coat);
+      t.part(P.antlerL, horn);
+      t.part(P.legFL, [124, 88, 58]);
+      t.eyes(P.head.rects.nz, 1, [36, 30, 26], { y: 1 });
+      t.rect(P.head.rects.nz, [60, 48, 44], 0, 1, 3, 3, 1);
+    },
+  });
+
+  defineMob('bear', {
+    label: 'Bear', width: 1.2, height: 1.5, speed: 1.05, eyeH: 1.3,
+    hp: 34, damage: 6, hostile: true,
+    loot: () => [[I.BEEF, 2, 4], [I.LEATHER, 2, 3]],
+    spawn: { forest: 0.30, snowy: 0.34, rocky: 0.40 }, groupMax: 1, call: 'groan',
+    parts: [
+      { id: 'body', size: [12, 12, 18], pos: [0, 16, 0] },
+      { id: 'head', size: [9, 8, 8], pos: [0, 19, -12], anim: 'head' },
+      { id: 'snout', size: [5, 4, 3], pos: [0, 18, -16], anim: 'head' },
+      { id: 'earL', size: [2, 3, 1], pos: [-3, 24, -11], anim: 'head' },
+      { id: 'earR', size: [2, 3, 1], pos: [3, 24, -11], anim: 'head' },
+      { id: 'legFL', size: [4, 10, 4], pos: [-4, 5, -6], pivot: [0, 5, 0], anim: 'legA', share: 'leg' },
+      { id: 'legFR', size: [4, 10, 4], pos: [4, 5, -6], pivot: [0, 5, 0], anim: 'legB', share: 'leg' },
+      { id: 'legBL', size: [4, 10, 4], pos: [-4, 5, 6], pivot: [0, 5, 0], anim: 'legB', share: 'leg' },
+      { id: 'legBR', size: [4, 10, 4], pos: [4, 5, 6], pivot: [0, 5, 0], anim: 'legA', share: 'leg' },
+    ],
+    paint(t, P) {
+      const fur = [92, 66, 48], dark = [58, 42, 32], muzzle = [156, 130, 102];
+      t.fill(fur);
+      t.part(P.body, fur, { top: 1.18, bottom: 0.72 });
+      t.part(P.head, fur);
+      t.part(P.snout, muzzle);
+      t.part(P.earL, dark);
+      t.part(P.legFL, dark);
+      for (let i = 0; i < 16; i++) {
+        const r = P.body.rects[['nx', 'px', 'py'][(t.rnd() * 3) | 0]];
+        t.patch(r, 1 + ((t.rnd() * (r[2] - 2)) | 0), 1 + ((t.rnd() * (r[3] - 2)) | 0), 1, dark);
+      }
+      t.eyes(P.head.rects.nz, 1, [28, 22, 20], { y: 2 });
+      t.dot(P.snout.rects.nz, 2, 0, [30, 26, 24]);
+    },
+  });
+
+  // ---- Poseidon's guard, and Poseidon ------------------------------------
+  // A guardian is mostly eye. It hangs in the water and does not much bother to
+  // swim, and what it does at range is worse than what it does up close.
+  defineMob('guardian', {
+    label: 'Guardian', width: 0.9, height: 0.9, speed: 1.1, eyeH: 0.6,
+    hp: 30, damage: 5, hostile: true, swims: true, glow: 0.3,
+    loot: () => [[I.PRISMARINE_SHARD, 1, 3]],
+    spawn: {}, groupMax: 3, call: 'hiss',
+    parts: [
+      { id: 'body', size: [12, 12, 12], pos: [0, 8, 0] },
+      { id: 'finT', size: [2, 5, 8], pos: [0, 15, 2], anim: 'head' },
+      { id: 'finB', size: [2, 5, 8], pos: [0, 1, 2], anim: 'head' },
+      { id: 'tail', size: [3, 3, 8], pos: [0, 8, 9], pivot: [0, 0, -4], anim: 'legA' },
+    ],
+    paint(t, P) {
+      const hide = [82, 138, 128], dark = [44, 84, 78], spine = [216, 230, 214];
+      t.fill(hide);
+      t.part(P.body, hide, { top: 1.2, bottom: 0.72 });
+      t.part(P.tail, dark);
+      t.part(P.finT, dark);
+      for (const k of ['px', 'nx', 'py', 'ny', 'pz']) {                    // spines all over it
+        const r = P.body.rects[k];
+        for (let i = 0; i < 7; i++) {
+          t.patch(r, 1 + ((t.rnd() * (r[2] - 2)) | 0), 1 + ((t.rnd() * (r[3] - 2)) | 0), 0, spine);
+        }
+      }
+      const f = P.body.rects.nz;                                          // the eye
+      t.rect(f, [236, 238, 230], 0, 3, 3, 6, 6);
+      t.rect(f, [226, 92, 74], 0, 4, 4, 4, 4);
+      t.rect(f, [20, 22, 26], 0, 5, 5, 2, 2);
+      t.rect(f, [255, 255, 255], 0, 5, 5, 1, 1);
+    },
+  });
+
+  // The man himself: green, enormous, and holding the thing you came for.
+  defineMob('poseidon', {
+    label: 'Poseidon', width: 1.2, height: 3.4, speed: 1.4, eyeH: 3.0,
+    hp: 150, damage: 14, hostile: true, boss: true, swims: true, glow: 0.35,
+    loot: () => [[I.TRIDENT, 1, 1], [I.HEART_OF_THE_SEA, 1, 1], [I.PRISMARINE_SHARD, 5, 9]],
+    spawn: {}, groupMax: 1, call: 'groan',
+    parts: [
+      { id: 'legL', size: [6, 16, 6], pos: [-5, 8, 0], pivot: [0, 8, 0], anim: 'legA', share: 'leg' },
+      { id: 'legR', size: [6, 16, 6], pos: [5, 8, 0], pivot: [0, 8, 0], anim: 'legB', share: 'leg' },
+      { id: 'body', size: [16, 22, 9], pos: [0, 27, 0] },
+      { id: 'armL', size: [5, 20, 5], pos: [-11, 30, 0], pivot: [0, 9, 0], anim: 'armA', share: 'arm' },
+      { id: 'armR', size: [5, 20, 5], pos: [11, 30, 0], pivot: [0, 9, 0], anim: 'armB', share: 'arm' },
+      { id: 'head', size: [10, 11, 10], pos: [0, 44, 0], anim: 'head' },
+      { id: 'crown', size: [12, 3, 12], pos: [0, 51, 0], anim: 'head' },
+    ],
+    paint(t, P) {
+      const skin = [96, 168, 152], deep = [56, 112, 106], gold = [232, 198, 88], beard = [206, 226, 218];
+      t.fill(skin);
+      t.part(P.body, skin, { top: 1.22, bottom: 0.7 });
+      t.part(P.legL, deep);
+      t.part(P.armL, skin);
+      t.part(P.head, skin);
+      t.part(P.crown, gold);
+      for (const k of ['nx', 'px', 'nz', 'pz']) {                          // scales down the legs
+        const r = P.legL.rects[k];
+        for (let i = 0; i < 9; i++) t.patch(r, 1 + ((t.rnd() * (r[2] - 2)) | 0), 1 + ((t.rnd() * (r[3] - 2)) | 0), 0, [76, 150, 140]);
+        t.band(P.body.rects[k], 12, 2, gold, 3);                           // a gold belt
+      }
+      const f = P.head.rects.nz;
+      t.rect(f, beard, 0, 1, 6, f[2] - 2, 4);                              // the beard
+      t.rect(f, skin, 0, 3, 6, f[2] - 6, 1);
+      t.rect(f, [236, 240, 236], 0, 2, 3, 2, 2);                           // eyes
+      t.rect(f, [236, 240, 236], 0, f[2] - 4, 3, 2, 2);
+      t.rect(f, [30, 90, 120], 0, 2, 4, 1, 1);
+      t.rect(f, [30, 90, 120], 0, f[2] - 3, 4, 1, 1);
+      t.face(P.head.rects.py, beard);
+      t.rect(P.crown.rects.nz, [255, 236, 150], 0, 1, 0, P.crown.rects.nz[2] - 2, 1);
+    },
+  });
+
+  // ---- what is loose in the Hacker Dimension -----------------------------
+  // Somebody in a black hoodie who should not have an account. Griefers go for
+  // your blocks as much as they go for you.
+  defineMob('griefer', {
+    label: 'Griefer', width: 0.6, height: 1.95, speed: 1.25, eyeH: 1.7,
+    hp: 24, damage: 5, hostile: true, griefer: true,
+    loot: () => [[I.DATA_SHARD, 1, 3]],
+    spawn: {}, groupMax: 2, call: 'groan',
+    parts: HUMANOID.slice(0, 6).map(p => Object.assign({}, p)),
+    paint(t, P) {
+      const hood = [26, 28, 34], trim = [88, 226, 120], jeans = [40, 44, 56], skin = [16, 18, 22];
+      t.fill(hood);
+      t.part(P.body, hood, { top: 1.2, bottom: 0.72 });
+      t.part(P.legL, jeans);
+      t.part(P.armL, hood);
+      t.part(P.head, hood);
+      for (const k of ['nx', 'px', 'nz', 'pz']) {                 // the drawstrings and cuffs
+        const r = P.armL.rects[k];
+        t.band(r, r[3] - 3, 3, [20, 22, 28], 2);
+        t.band(P.body.rects[k], 2, 1, trim, 2);
+      }
+      const f = P.head.rects.nz;
+      t.rect(f, skin, 0, 1, 3, f[2] - 2, 4);                      // a face lost inside the hood
+      t.rect(f, trim, 0, 2, 4, 2, 2);                             // two green points where eyes go
+      t.rect(f, trim, 0, f[2] - 4, 4, 2, 2);
+      t.rect(f, [240, 255, 240], 0, 2, 4, 1, 1);
+      t.rect(f, [240, 255, 240], 0, f[2] - 4, 4, 1, 1);
+      t.face(P.head.rects.py, [18, 20, 26]);
+    },
+  });
+
+  // A thing the server keeps trying to draw and keeps getting wrong.
+  defineMob('glitch', {
+    label: 'Glitch', width: 0.7, height: 1.4, speed: 1.9, eyeH: 1.1,
+    hp: 14, damage: 4, hostile: true, glitchy: true, glow: 0.6,
+    loot: () => [[I.DATA_SHARD, 1, 2], [B.CORRUPT, 1, 1]],
+    spawn: {}, groupMax: 3, call: 'beep',
+    parts: [
+      { id: 'legL', size: [4, 7, 4], pos: [-3, 4, 0], pivot: [0, 3, 0], anim: 'legA', share: 'leg' },
+      { id: 'legR', size: [4, 7, 4], pos: [3, 4, 0], pivot: [0, 3, 0], anim: 'legB', share: 'leg' },
+      { id: 'body', size: [9, 10, 5], pos: [0, 12, 0] },
+      { id: 'armL', size: [3, 9, 3], pos: [-6, 13, 0], pivot: [0, 4, 0], anim: 'armA', share: 'arm' },
+      { id: 'armR', size: [3, 9, 3], pos: [6, 13, 0], pivot: [0, 4, 0], anim: 'armB', share: 'arm' },
+      { id: 'head', size: [8, 7, 8], pos: [0, 20, 0], anim: 'head' },
+    ],
+    paint(t, P) {
+      const on = [232, 40, 232], off = [10, 10, 14];
+      t.fill(off);
+      // the missing-texture check, drawn straight onto the thing itself
+      for (const part of [P.body, P.head, P.armL, P.legL]) {
+        for (const k of FACE_KEY) {
+          const r = part.rects[k];
+          for (let y = 0; y < r[3]; y++) for (let x = 0; x < r[2]; x++) {
+            const cell = (((x >> 1) + (y >> 1)) & 1) === 0;
+            t.rect(r, cell ? on : off, 0, x, y, 1, 1);
+          }
+        }
+      }
+      const f = P.head.rects.nz;
+      t.rect(f, [88, 226, 120], 0, 1, 2, f[2] - 2, 2);            // one green scanline for a face
+      t.rect(f, [10, 10, 14], 0, 3, 5, f[2] - 6, 1);
+    },
+  });
+
+  // ---- what lives in the Deep Lands -------------------------------------
+  // The stalker has no eyes at all. It hangs off the ceiling listening, and only
+  // comes down when there is enough noise to come down for.
+  defineMob('stalker', {
+    label: 'Sculk Stalker', width: 0.7, height: 1.5, speed: 2.0, eyeH: 1.2,
+    hp: 22, damage: 6, hostile: true, deepStalker: true, glow: 0.42,
+    loot: () => [[I.ECHO_SHARD, 1, 2]],
+    spawn: {}, groupMax: 3, call: 'hiss',
+    parts: [
+      { id: 'legL', size: [3, 9, 3], pos: [-3, 5, 0], pivot: [0, 4, 0], anim: 'legA', share: 'leg' },
+      { id: 'legR', size: [3, 9, 3], pos: [3, 5, 0], pivot: [0, 4, 0], anim: 'legB', share: 'leg' },
+      { id: 'body', size: [8, 9, 5], pos: [0, 14, 0] },
+      { id: 'armL', size: [3, 13, 3], pos: [-6, 15, 0], pivot: [0, 6, 0], anim: 'armA', share: 'arm' },
+      { id: 'armR', size: [3, 13, 3], pos: [6, 15, 0], pivot: [0, 6, 0], anim: 'armB', share: 'arm' },
+      { id: 'head', size: [7, 6, 7], pos: [0, 21, 0], anim: 'head' },
+    ],
+    paint(t, P) {
+      const hide = [18, 30, 36], vein = [86, 224, 216];
+      t.fill(hide);
+      t.part(P.body, hide, { top: 1.2, bottom: 0.7 });
+      t.part(P.legL, [12, 22, 28]);
+      t.part(P.armL, [14, 26, 32]);
+      t.part(P.head, hide);
+      for (let i = 0; i < 22; i++) {                                 // sculk veins over the whole thing
+        const part = [P.body, P.armL, P.head, P.legL][(t.rnd() * 4) | 0];
+        const r = part.rects[['nx', 'px', 'nz', 'pz'][(t.rnd() * 4) | 0]];
+        t.patch(r, 1 + ((t.rnd() * (r[2] - 2)) | 0), 1 + ((t.rnd() * (r[3] - 2)) | 0), 1, vein);
+      }
+      const f = P.head.rects.nz;
+      t.rect(f, [8, 14, 18], 0, 1, 1, f[2] - 2, 3);                  // where the eyes would be, if it had any
+      t.rect(f, vein, 0, 2, 4, f[2] - 4, 1);                         // a listening slit instead
+      t.rect(f, [140, 246, 240], 0, (f[2] / 2) | 0, 4, 1, 1);
+    },
+  });
+
+  // And the thing the stalkers are only the warning for.
+  defineMob('warden', {
+    label: 'Warden', width: 1.2, height: 2.9, speed: 1.5, eyeH: 2.5,
+    hp: 120, damage: 16, hostile: true, deepWarden: true, boss: true, glow: 0.5,
+    loot: () => [[I.ECHO_SHARD, 4, 7], [I.DIAMOND, 1, 2]],
+    spawn: {}, groupMax: 1, call: 'groan',
+    parts: [
+      { id: 'legL', size: [6, 14, 6], pos: [-5, 7, 0], pivot: [0, 7, 0], anim: 'legA', share: 'leg' },
+      { id: 'legR', size: [6, 14, 6], pos: [5, 7, 0], pivot: [0, 7, 0], anim: 'legB', share: 'leg' },
+      { id: 'body', size: [16, 20, 10], pos: [0, 24, 0] },
+      { id: 'armL', size: [6, 22, 6], pos: [-11, 26, 0], pivot: [0, 10, 0], anim: 'armA', share: 'arm' },
+      { id: 'armR', size: [6, 22, 6], pos: [11, 26, 0], pivot: [0, 10, 0], anim: 'armB', share: 'arm' },
+      { id: 'head', size: [12, 10, 12], pos: [0, 39, 0], anim: 'head' },
+    ],
+    paint(t, P) {
+      const hide = [22, 40, 46], vein = [86, 224, 216], rib = [14, 26, 32];
+      t.fill(hide);
+      t.part(P.body, hide, { top: 1.25, bottom: 0.62 });
+      t.part(P.legL, rib);
+      t.part(P.armL, rib);
+      t.part(P.head, hide);
+      for (const k of ['nx', 'px', 'nz', 'pz']) {                    // a ribcage across the chest
+        const r = P.body.rects[k];
+        for (let b = 3; b < r[3] - 2; b += 4) t.band(r, b, 1, rib, 1);
+      }
+      t.rect(P.body.rects.nz, vein, 0, 6, 5, 4, 6);                  // the heart, showing through
+      t.rect(P.body.rects.nz, [180, 250, 246], 0, 7, 7, 2, 2);
+      for (let i = 0; i < 26; i++) {
+        const part = [P.body, P.armL, P.head][(t.rnd() * 3) | 0];
+        const r = part.rects[['nx', 'px', 'nz', 'pz'][(t.rnd() * 4) | 0]];
+        t.patch(r, 1 + ((t.rnd() * (r[2] - 2)) | 0), 1 + ((t.rnd() * (r[3] - 2)) | 0), 1, vein);
+      }
+      const f = P.head.rects.nz;
+      t.rect(f, [10, 18, 22], 0, 1, 2, f[2] - 2, 4);                 // no eyes, only the sensing band
+      t.rect(f, vein, 0, 2, 3, 2, 2);
+      t.rect(f, vein, 0, f[2] - 4, 3, 2, 2);
+      t.rect(f, [140, 246, 240], 0, 3, 8, f[2] - 6, 1);
+    },
+  });
+
+  // ---- more of what the city left running ---------------------------------
+  defineMob('drone', {
+    label: 'Drone', width: 0.7, height: 0.6, speed: 1.6, eyeH: 0.5,
+    hp: 12, damage: 4, hostile: true, flaps: true, glow: 0.25,
+    loot: () => [[B.CIRCUIT, 1, 2]],
+    spawn: { city: 0.9 }, groupMax: 3, call: 'beep',
+    parts: [
+      { id: 'body', size: [7, 4, 7], pos: [0, 7, 0] },
+      { id: 'eye', size: [3, 3, 2], pos: [0, 7, -4], anim: 'head' },
+      { id: 'armL', size: [7, 1, 2], pos: [-6, 9, 0], pivot: [3, 0, 0], anim: 'legA' },
+      { id: 'armR', size: [7, 1, 2], pos: [6, 9, 0], pivot: [-3, 0, 0], anim: 'legB' },
+    ],
+    paint(t, P) {
+      const shell = [66, 70, 82], trim = [124, 130, 144];
+      t.fill(shell);
+      t.part(P.body, shell, { top: 1.22, bottom: 0.74 });
+      t.part(P.armL, trim);
+      t.rect(P.eye.rects.nz, [232, 64, 52], 0, 0, 0, 3, 3);
+      t.rect(P.eye.rects.nz, [255, 190, 180], 0, 1, 1, 1, 1);
+      t.rect(P.body.rects.py, [92, 226, 140], 0, 3, 3, 1, 1);
+    },
+  });
+
+  defineMob('mech', {
+    label: 'Mech', width: 1.3, height: 3.1, speed: 0.95, eyeH: 2.7,
+    hp: 90, damage: 11, hostile: true, boss: true, glow: 0.2,
+    loot: () => [[B.CIRCUIT, 2, 5], [I.IRON_INGOT, 4, 8], [I.DIAMOND, 1, 2]],
+    spawn: { city: 0.16 }, groupMax: 1, call: 'beep',
+    parts: [
+      { id: 'legL', size: [7, 16, 7], pos: [-6, 8, 0], pivot: [0, 8, 0], anim: 'legA', share: 'leg' },
+      { id: 'legR', size: [7, 16, 7], pos: [6, 8, 0], pivot: [0, 8, 0], anim: 'legB', share: 'leg' },
+      { id: 'body', size: [18, 18, 11], pos: [0, 26, 0] },
+      { id: 'armL', size: [6, 20, 6], pos: [-12, 28, 0], pivot: [0, 9, 0], anim: 'armA', share: 'arm' },
+      { id: 'armR', size: [6, 20, 6], pos: [12, 28, 0], pivot: [0, 9, 0], anim: 'armB', share: 'arm' },
+      { id: 'head', size: [9, 7, 9], pos: [0, 39, 0], anim: 'head' },
+      { id: 'dish', size: [13, 2, 13], pos: [0, 44, 0], anim: 'head' },
+    ],
+    paint(t, P) {
+      const steel = [118, 124, 134], dark = [64, 68, 78], warn = [226, 176, 48];
+      t.fill(steel);
+      t.part(P.body, steel, { top: 1.2, bottom: 0.74 });
+      t.part(P.legL, dark);
+      t.part(P.armL, dark);
+      t.part(P.head, steel);
+      t.part(P.dish, dark);
+      for (const k of ['nx', 'px', 'nz', 'pz']) {                 // hazard striping round the chest
+        const r = P.body.rects[k];
+        for (let x = 0; x < r[2]; x++) if (((x >> 1) & 1) === 0) t.rect(r, warn, 0, x, r[3] - 3, 1, 2);
+        t.band(r, 2, 1, dark, 2);
+      }
+      const f = P.head.rects.nz;
+      t.rect(f, [22, 24, 30], 0, 1, 1, f[2] - 2, 3);              // the visor
+      t.rect(f, [255, 96, 72], 0, 2, 2, 2, 1);
+      t.rect(f, [255, 96, 72], 0, f[2] - 4, 2, 2, 1);
+      t.rect(P.body.rects.nz, [92, 226, 140], 0, 8, 6, 2, 2);     // the core, showing
+    },
+  });
+
   // The one thing out there that wants you dead.
   defineMob('zombie', {
     label: 'Zombie', width: 0.6, height: 1.95, speed: 1.05, eyeH: 1.7,
@@ -530,8 +1173,10 @@ class Mob {
     const z0 = Math.floor(z - hw), z1 = Math.floor(z + hw);
     for (let yy = y0; yy <= y1; yy++)
       for (let zz = z0; zz <= z1; zz++)
-        for (let xx = x0; xx <= x1; xx++)
-          if (isSolid(world.getBlock(xx, yy, zz))) return true;
+        for (let xx = x0; xx <= x1; xx++) {
+          const id = world.getBlock(xx, yy, zz);
+          if (id && blockHits(id, xx, yy, zz, x - hw, y, z - hw, x + hw, y + h, z + hw)) return true;
+        }
     return false;
   }
 
@@ -558,6 +1203,7 @@ class Mob {
 
   update(dt, world, player) {
     if (this.def.bot) return (this.def.arena === 'hunger' ? Hunger : BedWars).botUpdate(this, dt, world, player);
+    if (this.def.deepStalker || this.def.deepWarden) return this.deepUpdate(dt, world, player);
     if (this.def.flies) return this.flyUpdate(dt, world, player);
     const inWater = isLiquid(world.getBlock(Math.floor(this.x), Math.floor(this.y + 0.1), Math.floor(this.z)));
 
@@ -590,13 +1236,51 @@ class Mob {
         this.yaw += clamp(this.targetYaw - this.yaw, -6 * dt, 6 * dt);
         if (dist < 1.9 && Math.abs(dy) < 2.2 && this.attackCd <= 0 && player.damage) {
           this.attackCd = 1;
-          if (player.damage(this.def.damage, 'a zombie')) {
+          if (player.damage(this.def.damage, 'a ' + (this.def.label || 'zombie').toLowerCase())) {
             const push = 4.5 / Math.max(0.6, dist);
             player.vel[0] += dx * push; player.vel[2] += dz * push; player.vel[1] = 3.4;
           }
           Sound.animal(this.def.call, 1);
         }
       }
+      // A griefer takes the world apart as it comes: one block out of the wall
+      // in front of it every few seconds, which is how you know one is coming.
+      if (this.def.griefer && dist < 20) {
+        this.griefCd = (this.griefCd || 2) - dt;
+        if (this.griefCd <= 0) {
+          this.griefCd = 2.5 + Math.random() * 2;
+          const ax = Math.floor(this.x + Math.sin(this.yaw) * 1.4);
+          const az = Math.floor(this.z - Math.cos(this.yaw) * 1.4);
+          for (const dy of [1, 0, 2]) {
+            const y = Math.floor(this.y) + dy;
+            const id = world.getBlock(ax, y, az);
+            if (!id || id === B.BEDROCK || !BLOCKS[id].solid) continue;
+            world.setBlock(ax, y, az, 0);
+            Sound.dig(id);
+            break;
+          }
+        }
+      }
+
+      // A glitch does not walk the last stretch: it is simply somewhere else.
+      if (this.def.glitchy && dist < 24 && dist > 3) {
+        this.blinkCd = (this.blinkCd || 3) - dt;
+        if (this.blinkCd <= 0) {
+          this.blinkCd = 3 + Math.random() * 3;
+          const t = Math.min(0.7, 6 / dist);
+          const tx = this.x + dx * t, tz = this.z + dz * t;
+          for (let k = 0; k < 6; k++) {
+            const ty = Math.floor(this.y) + k - 1;
+            if (ty < 1) continue;
+            if (this.collides(world, tx, ty, tz)) continue;
+            if (!isSolid(world.getBlock(Math.floor(tx), ty - 1, Math.floor(tz)))) continue;
+            this.x = tx; this.y = ty; this.z = tz; this.vy = 0;
+            Sound.burst({ dur: 0.1, freq: 1800, gain: 0.16, sweep: 2 });
+            break;
+          }
+        }
+      }
+
       // daylight is fatal
       if (this.def.burnsInSun && Animals.isDay && world.getSky(Math.floor(this.x), Math.floor(this.y + 1), Math.floor(this.z)) >= 14) {
         this.burning = (this.burning || 0) + dt;
@@ -629,7 +1313,12 @@ class Mob {
     this.vx += (fx - this.vx) * blend;
     this.vz += (fz - this.vz) * blend;
 
-    if (inWater) {
+    if (this.def.swims && inWater) {
+      // Poseidon's people hang wherever they like in the water, and rise or sink
+      // to whatever height you happen to be at.
+      const want = clamp((player.pos[1] + 0.6 - this.y) * 1.6, -3, 3);
+      this.vy += (want - this.vy) * Math.min(1, dt * 3);
+    } else if (inWater) {
       this.vy += (1.6 - this.vy) * Math.min(1, dt * 4);          // float
     } else {
       const terminal = this.def.flaps ? 3.2 : 45;                 // chickens glide down
@@ -681,6 +1370,114 @@ class Mob {
       const dist = Math.hypot(this.x - player.pos[0], this.y - player.pos[1], this.z - player.pos[2]);
       if (dist < 26) Sound.animal(this.def.call, clamp(1 - dist / 26, 0.05, 1));
     }
+  }
+
+  // Blind things. Neither of these can see you at all; they go to the last place
+  // that made a noise, and they will stand over it until something else does.
+  deepUpdate(dt, world, player) {
+    const tier = typeof Deep === 'undefined' ? 0 : Deep.tier;
+    const heard = (typeof Deep !== 'undefined' && Deep.heard) || null;
+    this.attackCd = Math.max(0, (this.attackCd || 0) - dt);
+    this.hurt = Math.max(0, this.hurt - dt);
+
+    const dxP = player.pos[0] - this.x, dyP = player.pos[1] - this.y, dzP = player.pos[2] - this.z;
+    const toPlayer = Math.hypot(dxP, dyP, dzP);
+
+    // Where it thinks you are. At the top of the scale you are making so much
+    // noise that where it thinks you are and where you are are the same place.
+    let tx = this.home[0], tz = this.home[1];
+    if (tier >= 3) { tx = player.pos[0]; tz = player.pos[2]; }
+    else if (heard) { tx = heard[0]; tz = heard[2]; }
+
+    // A stalker below the second tier climbs back up and waits on the ceiling.
+    const hiding = this.def.deepStalker && tier < 2;
+    if (hiding) {
+      const ceil = this.ceilingAbove(world);
+      if (ceil !== null) {
+        this.clung = true;
+        const want = ceil - this.def.height;
+        this.y += (want - this.y) * Math.min(1, dt * 3);
+        this.vy = 0;
+        this.onGround = false;
+      }
+    } else if (this.clung) {
+      this.clung = false;                                   // let go, and drop on them
+      this.vy = -2;
+    }
+
+    const dx = tx - this.x, dz = tz - this.z;
+    const flat = Math.hypot(dx, dz);
+    const idle = tier === 0 && !this.hurt;
+    if (!idle && flat > 0.6) this.targetYaw = Math.atan2(dx, -dz);
+    let d = this.targetYaw - this.yaw;
+    while (d > Math.PI) d -= Math.PI * 2;
+    while (d < -Math.PI) d += Math.PI * 2;
+    this.yaw += clamp(d, -3.4 * dt, 3.4 * dt);
+
+    // How fast it comes: barely at all when it is quiet, flat out when it is not.
+    const urgency = idle ? 0.15 : (tier === 1 ? 0.5 : tier === 2 ? 1 : 1.25);
+    const speed = this.def.speed * urgency * (this.clung ? 0.6 : 1);
+    const moving = !idle || flat > 3;
+    this.walking = moving;
+    const fx = moving ? Math.sin(this.yaw) * speed : 0;
+    const fz = moving ? -Math.cos(this.yaw) * speed : 0;
+    this.vx += (fx - this.vx) * Math.min(1, dt * 8);
+    this.vz += (fz - this.vz) * Math.min(1, dt * 8);
+
+    if (!this.clung) {
+      this.vy -= GRAVITY_MOB * dt;
+      if (this.vy < -45) this.vy = -45;
+    }
+    this.onGround = false;
+    const steps = Math.max(1, Math.ceil(Math.hypot(this.vx, this.vy, this.vz) * dt / 0.25));
+    let blocked = false;
+    for (let i = 0; i < steps; i++) {
+      this.moveAxis(world, 1, this.vy * dt / steps);
+      blocked = this.moveAxis(world, 0, this.vx * dt / steps) || blocked;
+      blocked = this.moveAxis(world, 2, this.vz * dt / steps) || blocked;
+    }
+    if (blocked && this.onGround) {
+      const head = !isSolid(world.getBlock(Math.floor(this.x), Math.floor(this.y + this.def.height + 0.7), Math.floor(this.z)));
+      if (head) this.vy = 8.4; else this.targetYaw += 1.2;
+    }
+    if (this.y < -8) this.dead = true;
+
+    // What it does when it gets to you. The Warden also shouts, which reaches
+    // further than its arms do.
+    if (toPlayer < (this.def.deepWarden ? 3.4 : 2.2) && Math.abs(dyP) < 3 && this.attackCd <= 0 && player.damage) {
+      this.attackCd = this.def.deepWarden ? 1.6 : 0.9;
+      if (player.damage(this.def.damage, this.def.label.toLowerCase())) {
+        const push = 6 / Math.max(0.6, toPlayer);
+        player.vel[0] += dxP * push; player.vel[2] += dzP * push; player.vel[1] = 4;
+      }
+      Sound.animal(this.def.call, 1);
+    } else if (this.def.deepWarden && toPlayer < 22 && this.attackCd <= 0 && tier >= 2 && player.damage) {
+      this.attackCd = 3.5;                                  // the sonic shout
+      player.damage(9, 'the Warden');
+      Sound.burst({ dur: 0.7, freq: 70, gain: 0.5, sweep: 5 });
+    }
+
+    const hspeed = Math.hypot(this.vx, this.vz);
+    this.walkPhase += dt * (hspeed * 5.5 + 0.4);
+    this.swing = Math.min(1, hspeed / this.def.speed);
+    this.airborne = !this.onGround && !this.clung;
+    const l = world.getLight(Math.floor(this.x), Math.floor(this.y + this.def.height * 0.6), Math.floor(this.z));
+    this.sky = (l >> 4) / 15; this.blk = (l & 15) / 15;
+    this.callTimer -= dt;
+    if (this.callTimer <= 0) {
+      this.callTimer = 5 + Math.random() * 9;
+      if (toPlayer < 30) Sound.animal(this.def.call, clamp(1 - toPlayer / 30, 0.08, 1));
+    }
+  }
+
+  // The first solid block over its head, if there is one within reach.
+  ceilingAbove(world) {
+    const x = Math.floor(this.x), z = Math.floor(this.z);
+    const from = Math.floor(this.y + this.def.height);
+    for (let y = from; y < from + 22 && y < CY; y++) {
+      if (isSolid(world.getBlock(x, y, z))) return y;
+    }
+    return null;
   }
 
   // The dragon never touches the ground: it circles the island, and every so
@@ -788,7 +1585,15 @@ const Animals = {
   seed(world, player, viewDist) {
     if (this.seeded) return;
     this.seeded = true;
-    for (let i = 0; i < 10 && this.list.length < this.cap; i++) this.trySpawn(world, player, viewDist);
+    const cap = this.capFor(world);
+    for (let i = 0; i < 14 && this.list.length < cap; i++) this.trySpawn(world, player, viewDist);
+  },
+
+  // How crowded a world gets. Back then it was crowded; an arena has its cap set
+  // to zero and stays empty whatever the dimension.
+  capFor(world) {
+    if (!this.cap) return 0;
+    return world.dimension === 'dinos' ? Math.max(this.cap, 44) : this.cap;
   },
 
   update(dt, world, player, viewDist, isDay) {
@@ -803,19 +1608,30 @@ const Animals = {
     });
     this.spawnTimer -= dt;
     if (this.spawnTimer <= 0) {
-      this.spawnTimer = 1.3;
-      if (this.list.length < this.cap) this.trySpawn(world, player, viewDist);
+      this.spawnTimer = world.dimension === 'dinos' ? 0.6 : 1.3;
+      if (this.list.length < this.capFor(world)) this.trySpawn(world, player, viewDist);
     }
     this.hostileTimer = (this.hostileTimer || 0) - dt;
     if (this.hostileTimer <= 0) {
-      this.hostileTimer = 2;
+      this.hostileTimer = world.dimension === 'future' ? 0.8 : (world.dimension === 'deep' ? 1.4 : 2);
       const hostiles = this.list.reduce((n, m) => n + (m.def.hostile ? 1 : 0), 0);
-      if (hostiles < this.hostileCap) this.trySpawnHostile(world, player, viewDist);
+      let cap = this.hostileCap;
+      if (cap && world.dimension === 'future') cap = Math.max(cap, 34);
+      // How many stalkers there are is a function of how loud you have been.
+      if (cap && world.dimension === 'deep') cap = 3 + (typeof Deep === 'undefined' ? 0 : Deep.tier) * 5;
+      if (cap && world.dimension === 'hacker') cap = Math.max(cap, 16);
+      if (cap && world.dimension === 'sea') cap = Math.max(cap, 14);
+      if (hostiles < cap) this.trySpawnHostile(world, player, viewDist);
     }
   },
 
   // Zombies want somewhere dark: a cave, or the surface after sunset.
   trySpawnHostile(world, player, viewDist) {
+    if (world.dimension === 'dinos') return;
+    if (world.dimension === 'deep') return this.trySpawnStalker(world, player);
+    if (world.dimension === 'hacker') return this.trySpawnHack(world, player);
+    if (world.dimension === 'sea') return this.trySpawnGuardian(world, player);
+    const apocalypse = world.dimension === 'future';
     for (let attempt = 0; attempt < 10; attempt++) {
       const a = Math.random() * Math.PI * 2;
       const r = 14 + Math.random() * Math.max(10, (viewDist - 4) * CX - 14);
@@ -826,11 +1642,77 @@ const Animals = {
       const y = 5 + Math.floor(Math.random() * Math.max(1, top - 4));
       if (!isSolid(world.getBlock(x, y - 1, z))) continue;
       if (world.getBlock(x, y, z) !== 0 || world.getBlock(x, y + 1, z) !== 0) continue;
-      const sky = this.isDay ? world.getSky(x, y, z) : 0;
-      if (Math.max(sky, world.getBlockLight(x, y, z)) > 7) continue;
-      const n = 1 + Math.floor(Math.random() * 2);
-      const kind = (world.dimension === 'end' || Math.random() < 0.22) ? 'enderman' : 'zombie';
+      if (!apocalypse) {
+        const sky = this.isDay ? world.getSky(x, y, z) : 0;
+        if (Math.max(sky, world.getBlockLight(x, y, z)) > 7) continue;     // elsewhere they need the dark
+      }
+      const n = 1 + Math.floor(Math.random() * (apocalypse ? 4 : 2));
+      let kind = 'zombie';
+      if (apocalypse) {
+        // the city is as full of machines as it is of the dead
+        const r = Math.random();
+        kind = r < 0.52 ? 'zombie' : r < 0.72 ? 'drone' : r < 0.90 ? 'sentry' : 'mech';
+      } else if (world.dimension === 'end' || Math.random() < 0.22) kind = 'enderman';
       for (let i = 0; i < n; i++) this.list.push(new Mob(kind, x + 0.5 + i * 0.6, y, z + 0.5, Math.random() * 6.28));
+      return;
+    }
+  },
+
+  // Guardians come out of the open water, not off the bed.
+  trySpawnGuardian(world, player) {
+    for (let attempt = 0; attempt < 12; attempt++) {
+      const a = Math.random() * Math.PI * 2, r = 16 + Math.random() * 26;
+      const x = Math.floor(player.pos[0] + Math.cos(a) * r);
+      const z = Math.floor(player.pos[2] + Math.sin(a) * r);
+      if (!world.getChunk(x >> 4, z >> 4)) continue;
+      const y = Math.floor(player.pos[1]) + Math.floor(Math.random() * 9) - 4;
+      if (y < 2 || y > SEA_TOP - 2) continue;
+      if (!isLiquid(world.getBlock(x, y, z)) || !isLiquid(world.getBlock(x, y + 1, z))) continue;
+      this.list.push(new Mob('guardian', x + 0.5, y, z + 0.5, Math.random() * 6.28));
+      return;
+    }
+  },
+
+  // Griefers and glitches, anywhere on the grid there is floor to stand on.
+  trySpawnHack(world, player) {
+    for (let attempt = 0; attempt < 14; attempt++) {
+      const a = Math.random() * Math.PI * 2, r = 14 + Math.random() * 30;
+      const x = Math.floor(player.pos[0] + Math.cos(a) * r);
+      const z = Math.floor(player.pos[2] + Math.sin(a) * r);
+      if (!world.getChunk(x >> 4, z >> 4)) continue;
+      let floor = -1;
+      for (let y = HK_FLOOR; y < HK_FLOOR + 40; y++) {
+        if (isSolid(world.getBlock(x, y, z)) && !isSolid(world.getBlock(x, y + 1, z))
+            && !isSolid(world.getBlock(x, y + 2, z))) { floor = y + 1; break; }
+      }
+      if (floor < 0) continue;
+      const kind = Math.random() < 0.55 ? 'griefer' : 'glitch';
+      const n = 1 + Math.floor(Math.random() * 2);
+      for (let i = 0; i < n; i++) {
+        this.list.push(new Mob(kind, x + 0.5 + i * 0.7, floor, z + 0.5, Math.random() * 6.28));
+      }
+      return;
+    }
+  },
+
+  // Stalkers arrive on the ceiling, out of sight, far enough away that the first
+  // you know of one is the sound it makes when it lets go.
+  trySpawnStalker(world, player) {
+    for (let attempt = 0; attempt < 14; attempt++) {
+      const a = Math.random() * Math.PI * 2, r = 16 + Math.random() * 22;
+      const x = Math.floor(player.pos[0] + Math.cos(a) * r);
+      const z = Math.floor(player.pos[2] + Math.sin(a) * r);
+      if (!world.getChunk(x >> 4, z >> 4)) continue;
+      let floor = -1;
+      for (let y = DEEP_FLOOR; y < DEEP_FLOOR + 30; y++) {
+        if (isSolid(world.getBlock(x, y, z)) && !isSolid(world.getBlock(x, y + 1, z))) { floor = y + 1; break; }
+      }
+      if (floor < 0) continue;
+      let head = floor;
+      while (head < floor + 24 && !isSolid(world.getBlock(x, head, z))) head++;
+      if (head - floor < 3) continue;                    // no room to hang
+      const y = Math.max(floor, head - 2);
+      this.list.push(new Mob('stalker', x + 0.5, y, z + 0.5, Math.random() * 6.28));
       return;
     }
   },
@@ -840,7 +1722,8 @@ const Animals = {
     if (!world.getChunk(bx >> 4, bz >> 4)) return -1;
     const info = world.column(bx, bz);
     const ground = world.getBlock(bx, info.h, bz);
-    if (ground !== B.GRASS && ground !== B.SNOW) return -1;
+    const paved = world.dimension === 'future' && isSolid(ground);   // the city has no lawns
+    if (!paved && ground !== B.GRASS && ground !== B.SNOW) return -1;
     const y = info.h + 1;
     const need = Math.max(1, Math.ceil(def.height));
     for (let i = 0; i < need; i++) if (world.getBlock(bx, y + i, bz) !== 0) return -1;
@@ -875,15 +1758,22 @@ const Animals = {
       }
       const def = MOB_TYPES[type];
 
-      const y = this.groundAt(world, x, z, def);
-      if (y < 0 || world.getSky(x, y, z) < 8) continue;
+      // Something as tall as a tyrannosaur needs a clearing, and under a jungle
+      // canopy those are scarce — so look around a little before giving up.
+      let sx = x, sz = z, y = this.groundAt(world, x, z, def);
+      for (let k = 0; y < 0 && k < 8; k++) {
+        sx = x + Math.round((Math.random() - 0.5) * 12);
+        sz = z + Math.round((Math.random() - 0.5) * 12);
+        y = this.groundAt(world, sx, sz, def);
+      }
+      if (y < 0 || world.getSky(sx, y, sz) < 8) continue;
 
       const n = 1 + Math.floor(Math.random() * def.groupMax);
       const yaw = Math.random() * Math.PI * 2;
-      this.list.push(new Mob(type, x + 0.5, y, z + 0.5, yaw));
-      for (let i = 1; i < n && this.list.length < this.cap; i++) {
-        const bx = x + Math.round(Math.random() * 5 - 2.5);
-        const bz = z + Math.round(Math.random() * 5 - 2.5);
+      this.list.push(new Mob(type, sx + 0.5, y, sz + 0.5, yaw));
+      for (let i = 1; i < n && this.list.length < this.capFor(world); i++) {
+        const bx = sx + Math.round(Math.random() * 5 - 2.5);
+        const bz = sz + Math.round(Math.random() * 5 - 2.5);
         const gy = this.groundAt(world, bx, bz, def);
         if (gy < 0) continue;
         this.list.push(new Mob(type, bx + 0.5, gy, bz + 0.5, yaw));

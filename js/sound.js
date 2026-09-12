@@ -74,6 +74,9 @@ const Sound = {
       this.tone({ f0: 90, f1: 40, dur: 1.3, type: 'square', gain: g * 0.6 });
     } else if (call === 'groan') {
       this.tone({ f0: 150, f1: 96, dur: 0.55, type: 'sawtooth', gain: g * 0.8, vibrato: 9 });
+    } else if (call === 'beep') {
+      this.tone({ f0: 880, f1: 880, dur: 0.06, type: 'square', gain: g * 0.5 });
+      this.tone({ f0: 1320, f1: 1320, dur: 0.05, type: 'square', gain: g * 0.4, delay: 0.09 });
     } else if (call === 'hmm') {
       this.tone({ f0: 240, f1: 200, dur: 0.35, type: 'sine', gain: g * 0.7 });
     } else {

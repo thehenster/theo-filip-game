@@ -20,6 +20,7 @@ function spriteTile(name, mask, palette) {
         const ch = row[x];
         if (!ch || ch === '.') continue;
         const c = palette[ch];
+        if (!c) continue;                       // a letter with no colour draws nothing
         const v = c[3] ? (t.rnd() - 0.5) * c[3] : 0;
         t.px(x, y, c[0] + v, c[1] + v, c[2] + v, 255);
       }
@@ -404,6 +405,362 @@ const shades = c => ({ L: tone(c, 1.25), M: c, D: tone(c, 0.66) });
 const HAFT = { S: [150, 110, 66], s: [104, 74, 44] };
 const GRIP = { G: [128, 128, 136], H: [122, 86, 50], h: [86, 60, 34] };
 
+const MASK_BUCKET = [
+  '................',
+  '................',
+  '..BBBBBBBBBB....',
+  '..BFFFFFFFFB....',
+  '..BFFFFFFFFB....',
+  '..BFFFFFFFFB....',
+  '...BFFFFFFB.....',
+  '...BFFFFFFB.....',
+  '...BFFFFFFB.....',
+  '....BFFFFB......',
+  '....BFFFFB......',
+  '.....BBBBB......',
+  '................',
+  '................',
+  '................',
+  '................',
+];
+const MASK_BOW = [
+  '..........WWW...',
+  '........WW...W..',
+  '.......W......W.',
+  '......W.S.....W.',
+  '.....W..S.....W.',
+  '.....W...S....W.',
+  '....W....S....W.',
+  '....W.....S...W.',
+  '....W.....S...W.',
+  '.....W.....S..W.',
+  '.....W.....S..W.',
+  '......W.....S.W.',
+  '.......W......W.',
+  '........WW...W..',
+  '..........WWW...',
+  '................',
+];
+const MASK_ARROW = [
+  '..............HH',
+  '.............HH.',
+  '............HH..',
+  '...........HH...',
+  '..........HH....',
+  '.........HH.....',
+  '........SS......',
+  '.......SS.......',
+  '......SS........',
+  '.....SS.........',
+  '....FS..........',
+  '...FFS..........',
+  '..FF.S..........',
+  '.FF.............',
+  'FF..............',
+  '................',
+];
+const MASK_APPLE = [
+  '................',
+  '................',
+  '.......S........',
+  '......LS........',
+  '....AAAAAA......',
+  '...AAAAAAAA.....',
+  '..AAAAAAAAAA....',
+  '..AAAAAAAAAA....',
+  '..AAAAAAAAAA....',
+  '..AAAAAAAAAA....',
+  '...AAAAAAAA.....',
+  '....AAAAAA......',
+  '................',
+  '................',
+  '................',
+  '................',
+];
+
+// A horn of coiled deepslate: the Sonic Cannon, which fires the noise itself.
+const MASK_CANNON = [
+  '................',
+  '................',
+  '.............CC.',
+  '...........CCEE.',
+  '.........CCEEEE.',
+  '.......CCEEEEEE.',
+  '.....CCEEEEEEEE.',
+  '..GGCCEEEEEEEE..',
+  '..GGCCEEEEEEEE..',
+  '.....CCEEEEEEEE.',
+  '.......CCEEEEEE.',
+  '.........CCEEEE.',
+  '...........CCEE.',
+  '.............CC.',
+  '................',
+  '................',
+];
+
+// Guns. Four silhouettes, all built the same way: B is the body, G the grip,
+// M the metal of the barrel and S the sight or stock.
+const MASK_PISTOL = [
+  '................',
+  '................',
+  '................',
+  '....S...........',
+  '...BBBBBBBB.....',
+  '...BBBBBBBBM....',
+  '...BBBB.........',
+  '...BGGB.........',
+  '....GGB.........',
+  '....GGG.........',
+  '.....GGG........',
+  '.....GGG........',
+  '................',
+  '................',
+  '................',
+  '................',
+];
+const MASK_RIFLE = [
+  '................',
+  '................',
+  '.......S........',
+  '......SSS.......',
+  '..BBBBBBBBBBBMM.',
+  '..BBBBBBBBBBBMM.',
+  'SSBBBB..BBBB....',
+  'SSBGGB..........',
+  '..GGG...........',
+  '..GGG...........',
+  '...GG...........',
+  '................',
+  '................',
+  '................',
+  '................',
+  '................',
+];
+const MASK_SHOTGUN = [
+  '................',
+  '................',
+  '................',
+  '...BBBBBBBBBBMM.',
+  '...BBBBBBBBBBMM.',
+  '.SSBBBBBBBBBBMM.',
+  '.SSBBBB.........',
+  '.SSBGGB.........',
+  '...GGG..........',
+  '...GGG..........',
+  '....GG..........',
+  '................',
+  '................',
+  '................',
+  '................',
+  '................',
+];
+const MASK_SNIPER = [
+  '................',
+  '................',
+  '.....SSSSSS.....',
+  '.....SSSSSS.....',
+  '..BBBBBBBBBBBBMM',
+  '..BBBBBBBBBBBBMM',
+  'SSBBBB...BBB....',
+  'SSBGGB..........',
+  '..GGG...........',
+  '..GGG...........',
+  '...GG...........',
+  '................',
+  '................',
+  '................',
+  '................',
+  '................',
+];
+const MASK_BULLET = [
+  '................',
+  '................',
+  '................',
+  '..M..M..M..M....',
+  '.MMM.MMM.MMM....',
+  '.BBB.BBB.BBB....',
+  '.BBB.BBB.BBB....',
+  '.BBB.BBB.BBB....',
+  '.BBB.BBB.BBB....',
+  '.BBB.BBB.BBB....',
+  '.BBB.BBB.BBB....',
+  '.BBB.BBB.BBB....',
+  '................',
+  '................',
+  '................',
+  '................',
+];
+const MASK_BOTTLE = [
+  '................',
+  '.......CC.......',
+  '.......CC.......',
+  '......GGGG......',
+  '.....GWWWWG.....',
+  '....GWWWWWWG....',
+  '....GWWWWWWG....',
+  '....GWWWWWWG....',
+  '....GWWWWWWG....',
+  '....GWWWWWWG....',
+  '....GWWWWWWG....',
+  '.....GWWWWG.....',
+  '......GGGG......',
+  '................',
+  '................',
+  '................',
+];
+const MASK_BERRY = [
+  '................',
+  '................',
+  '.......L........',
+  '......LL........',
+  '...RRR..RRR.....',
+  '..RRRRR.RRRRR...',
+  '..RRRRR.RRRRR...',
+  '...RRR...RRR....',
+  '.....RRRRR......',
+  '....RRRRRRR.....',
+  '....RRRRRRR.....',
+  '.....RRRRR......',
+  '................',
+  '................',
+  '................',
+  '................',
+];
+
+// Three prongs on a long shaft. Thrown, mostly.
+const MASK_TRIDENT = [
+  '................',
+  '.....P...P......',
+  '.....P.P.P......',
+  '.....P.P.P......',
+  '.....PPPPP......',
+  '.......P........',
+  '.......S........',
+  '.......S........',
+  '......S.........',
+  '......S.........',
+  '.....S..........',
+  '.....S..........',
+  '....S...........',
+  '....S...........',
+  '................',
+  '................',
+];
+
+// A hammer with a red band round the head, for removing people from a server.
+const MASK_HAMMER = [
+  '................',
+  '................',
+  '...HHHHHHHH.....',
+  '..HRRHHHHRRH....',
+  '..HRRHHHHRRH....',
+  '..HHHHHHHHHH....',
+  '.....HGGH.......',
+  '.....HGGH.......',
+  '.....GGGG.......',
+  '.....GGGG.......',
+  '....GGGG........',
+  '....GGGG........',
+  '...GGGG.........',
+  '...GGGG.........',
+  '................',
+  '................',
+];
+
+// A USB stick with something on it that should not be on it.
+const MASK_CHIP = [
+  '................',
+  '................',
+  '................',
+  '....SSSSSSSSSS..',
+  '....SBBBBBBBBS..',
+  '..MMSBEEEEEEBS..',
+  '..MMSBEEEEEEBS..',
+  '..MMSBEEEEEEBS..',
+  '..MMSBBBBBBBBS..',
+  '....SSSSSSSSSS..',
+  '................',
+  '................',
+  '................',
+  '................',
+  '................',
+  '................',
+];
+
+// The Solytra: a pair of folded wings with an echo core between them.
+const MASK_SOLYTRA = [
+  '................',
+  '..WW........WW..',
+  '.WWWW......WWWW.',
+  '.WWWWW....WWWWW.',
+  '.WWWWWW..WWWWWW.',
+  '.WWWWWWCCWWWWWW.',
+  '.WWWWWWCCWWWWWW.',
+  '..WWWWWEEWWWWW..',
+  '..WWWWWEEWWWWW..',
+  '...WWWWCCWWWW...',
+  '....WWWCCWWW....',
+  '.....WWCCWW.....',
+  '......WCCW......',
+  '.......CC.......',
+  '................',
+  '................',
+];
+
+const MASK_EGG = [
+  '................',
+  '................',
+  '......EEE.......',
+  '.....EEEEE......',
+  '....EEEEEEE.....',
+  '....EEEEEEE.....',
+  '...EEEEEEEEE....',
+  '...EEEEEEEEE....',
+  '...EEEEEEEEE....',
+  '...EEEEEEEEE....',
+  '....EEEEEEE.....',
+  '....EEEEEEE.....',
+  '.....EEEEE......',
+  '......EEE.......',
+  '................',
+  '................',
+];
+
+// Every egg is the same egg, spotted in the colours of whatever is inside it.
+const EGG_COLOURS = {
+  pig: [[240, 158, 156], [196, 108, 110]],
+  cow: [[78, 62, 48], [230, 228, 222]],
+  sheep: [[238, 236, 231], [186, 176, 166]],
+  chicken: [[246, 246, 244], [240, 158, 50]],
+  zombie: [[92, 142, 84], [58, 132, 130]],
+  enderman: [[22, 20, 28], [188, 148, 236]],
+  stegosaurus: [[96, 118, 74], [176, 122, 66]],
+  raptor: [[148, 106, 62], [92, 62, 38]],
+  tyrannosaur: [[86, 92, 78], [230, 176, 40]],
+  sentry: [[138, 144, 152], [232, 64, 52]],
+  scrapbot: [[176, 152, 84], [96, 226, 236]],
+  villager_farmer: [[98, 70, 50], [118, 148, 60]],
+  villager_butcher: [[98, 70, 50], [206, 206, 206]],
+  villager_toolsmith: [[98, 70, 50], [88, 92, 104]],
+  villager_armourer: [[98, 70, 50], [64, 74, 96]],
+  villager_mason: [[98, 70, 50], [150, 128, 96]],
+};
+
+// Defined after the animals, because it needs to know what animals there are.
+function defineSpawnEggs() {
+  const rows = MASK_EGG.map(r => r.split(''));
+  for (const [x, y] of [[6, 4], [9, 6], [5, 8], [9, 10], [6, 11], [10, 8]]) {
+    if (rows[y] && rows[y][x] === 'E') rows[y][x] = 'S';
+  }
+  const mask = rows.map(r => r.join(''));
+  for (const type of MOB_ORDER) {
+    if (type.startsWith('bot_') || type.startsWith('tribute_') || type === 'bw_shop' || type === 'dragon') continue;
+    const def = MOB_TYPES[type];
+    const [base, spot] = EGG_COLOURS[type] || [[170, 170, 176], [220, 220, 226]];
+    defItem(def.label + ' Egg', spriteTile('egg_' + type, mask, { E: base, S: spot }), { spawnEgg: type });
+  }
+}
+
 function defItem(name, tile, opts = {}) {
   const id = ITEM_BASE + ITEMS.length;
   ITEMS.push(Object.assign({ id, name, tile }, opts));
@@ -466,7 +823,66 @@ function defineItems() {
 
     ROTTEN_FLESH: defItem('Rotten Flesh', spriteTile('it_rotten', MASK_MEAT, Object.assign(shades([126, 152, 96]), { B: [232, 228, 214] })), { food: 2 }),
 
+    BUCKET: defItem('Bucket', spriteTile('it_bucket', MASK_BUCKET,
+      { B: [176, 180, 188], F: [138, 142, 150] }), { bucket: 'empty' }),
+    WATER_BUCKET: defItem('Water Bucket', spriteTile('it_bucket_water', MASK_BUCKET,
+      { B: [176, 180, 188], F: [58, 118, 206] }), { bucket: 'water' }),
+    LAVA_BUCKET: defItem('Lava Bucket', spriteTile('it_bucket_lava', MASK_BUCKET,
+      { B: [176, 180, 188], F: [228, 118, 34] }), { bucket: 'lava' }),
+    BOW: defItem('Bow', spriteTile('it_bow', MASK_BOW,
+      { W: [140, 100, 58], S: [226, 226, 230] }), { bow: true, damage: 1 }),
+    ARROW: defItem('Arrow', spriteTile('it_arrow', MASK_ARROW,
+      { H: [222, 224, 228], S: [150, 112, 62], F: [232, 232, 236] }), { arrow: true }),
+    APPLE: defItem('Apple', spriteTile('it_apple', MASK_APPLE,
+      { A: [206, 52, 48], L: [86, 152, 66], S: [122, 88, 52] }), { food: 4 }),
+
     FEATHER: defItem('Feather', spriteTile('it_feather', MASK_FEATHER, shades([232, 232, 236]))),
+
+    // ---- brought up out of the Deep Lands --------------------------------
+    ECHO_SHARD: defItem('Echo Shard', spriteTile('it_echo_shard', MASK_GEM, shades([132, 232, 224]))),
+    HEART_OF_THE_DEEP: defItem('Heart of the Deep',
+      spriteTile('it_deep_heart', MASK_HEART, { H: [46, 176, 176] }), { deepKey: true }),
+    SONIC_CANNON: defItem('Sonic Cannon', spriteTile('it_sonic_cannon', MASK_CANNON,
+      { C: [58, 62, 72], E: [118, 226, 220], G: [40, 42, 50] }), { sonic: true, damage: 3 }),
+
+    // ---- carried back out of the Hacker Dimension ------------------------
+    // ---- out of Poseidon's realm -----------------------------------------
+    PRISMARINE_SHARD: defItem('Prismarine Shard', spriteTile('it_prismarine_shard', MASK_GEM, shades([132, 202, 184]))),
+    HEART_OF_THE_SEA: defItem('Heart of the Sea',
+      spriteTile('it_sea_heart', MASK_HEART, { H: [72, 168, 208] }), { seaHeart: true }),
+    TRIDENT: defItem('Trident', spriteTile('it_trident', MASK_TRIDENT,
+      { P: [176, 216, 208], S: [92, 132, 128] }), { trident: true, damage: 9 }),
+
+    // ---- guns, and what they eat ------------------------------------------
+    GUNPOWDER: defItem('Gunpowder', spriteTile('it_gunpowder', MASK_GEM, shades([92, 92, 96]))),
+    BULLETS: defItem('Bullets', spriteTile('it_bullets', MASK_BULLET,
+      { M: [216, 190, 96], B: [178, 146, 66] }), { ammo: true }),
+    PISTOL: defItem('Pistol', spriteTile('gn_pistol', MASK_PISTOL,
+      { B: [58, 60, 68], G: [92, 68, 46], M: [176, 178, 186], S: [140, 142, 150] }),
+      { gun: 'pistol', damage: 5 }),
+    RIFLE: defItem('Rifle', spriteTile('gn_rifle', MASK_RIFLE,
+      { B: [48, 50, 56], G: [80, 60, 42], M: [176, 178, 186], S: [66, 68, 76] }),
+      { gun: 'rifle', damage: 6 }),
+    SHOTGUN: defItem('Shotgun', spriteTile('gn_shotgun', MASK_SHOTGUN,
+      { B: [70, 52, 38], G: [96, 72, 48], M: [186, 188, 196], S: [58, 44, 32] }),
+      { gun: 'shotgun', damage: 4 }),
+    SNIPER: defItem('Sniper Rifle', spriteTile('gn_sniper', MASK_SNIPER,
+      { B: [42, 46, 44], G: [72, 56, 40], M: [176, 178, 186], S: [30, 32, 36] }),
+      { gun: 'sniper', damage: 22 }),
+
+    // ---- food and drink ----------------------------------------------------
+    BOTTLE: defItem('Glass Bottle', spriteTile('it_bottle', MASK_BOTTLE,
+      { G: [186, 214, 208], W: [222, 238, 236], C: [150, 176, 172] }), { bottle: 'empty' }),
+    WATER_BOTTLE: defItem('Water Bottle', spriteTile('it_water_bottle', MASK_BOTTLE,
+      { G: [186, 214, 208], W: [58, 130, 210], C: [150, 176, 172] }), { bottle: 'water', drink: 8 }),
+    BERRIES: defItem('Berries', spriteTile('it_berries', MASK_BERRY,
+      { R: [196, 40, 46], L: [86, 152, 66] }), { food: 2, drink: 2 }),
+
+    DATA_SHARD: defItem('Data Shard', spriteTile('it_data_shard', MASK_GEM, shades([88, 226, 120]))),
+    BAN_HAMMER: defItem('Ban Hammer', spriteTile('it_ban_hammer', MASK_HAMMER,
+      { H: [206, 210, 220], R: [220, 56, 56], G: [122, 88, 52] }), { damage: 12, banhammer: true }),
+    HACKED_CLIENT: defItem('Hacked Client', spriteTile('it_hacked_client', MASK_CHIP,
+      { S: [64, 68, 80], B: [30, 34, 42], E: [88, 226, 120], M: [176, 180, 190] }), { hack: true }),
   };
 
   defineUiSprites();
@@ -495,6 +911,12 @@ function defineItems() {
   I.LEATHER_CHESTPLATE = armour('Leather Tunic', MASK_CHEST, 'ar_leather_chest', lea, 'chest', 3);
   I.LEATHER_LEGGINGS = armour('Leather Trousers', MASK_LEGS, 'ar_leather_legs', lea, 'legs', 2);
   I.LEATHER_BOOTS = armour('Leather Boots', MASK_BOOTS, 'ar_leather_boots', lea, 'feet', 1);
+
+  // The Solytra. It counts as a chestplate, but what you actually want it for is
+  // that it holds you up in the air and that it can shove you back into it.
+  I.SOLYTRA = defItem('Solytra', spriteTile('ar_solytra', MASK_SOLYTRA,
+    { W: [70, 78, 92], C: [46, 176, 176], E: [156, 246, 240] }),
+    { armour: true, slot: 'chest', points: 3, glide: true });
 
   // sword damage, in half-hearts, matching Minecraft's ladder
   const dmg = { WOOD_SWORD: 4, STONE_SWORD: 5, IRON_SWORD: 6, GOLD_SWORD: 4, DIAMOND_SWORD: 7 };

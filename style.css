@@ -134,6 +134,9 @@ body:not(.survival) .survival-only, body.survival .creative-only { display: none
 #chest.open { display: grid; }
 .chest-window { grid-template-columns: 1fr; width: min(560px, 94vw); }
 #furnace { position: fixed; inset: 0; display: none; place-items: center; background: rgba(6,8,13,.72); backdrop-filter: blur(8px); z-index: 9; }
+#printer { position: fixed; inset: 0; display: none; place-items: center; background: rgba(6,8,13,.72); backdrop-filter: blur(8px); z-index: 9; }
+#printer.open { display: grid; }
+#printer-list { display: flex; flex-direction: column; gap: 8px; max-height: 50vh; overflow-y: auto; }
 #furnace.open { display: grid; }
 #furnace-list { display: flex; flex-direction: column; gap: 8px; max-height: 50vh; overflow-y: auto; }
 #trading { position: fixed; inset: 0; display: none; place-items: center; background: rgba(6,8,13,.72); backdrop-filter: blur(8px); z-index: 9; }
@@ -268,8 +271,8 @@ body.dragging-stack #dropzone { display: flex; }
 
 
 /* ---- Bed Wars ------------------------------------------------------- */
-#shop { position: fixed; inset: 0; display: none; place-items: center; background: rgba(6,8,13,.72); backdrop-filter: blur(8px); z-index: 9; }
-#shop.open { display: grid; }
+#store, #shop { position: fixed; inset: 0; display: none; place-items: center; background: rgba(6,8,13,.72); backdrop-filter: blur(8px); z-index: 9; }
+#shop.open, #store.open { display: grid; }
 
 #arenaboard {
   position: fixed; top: 14px; right: 14px; width: 186px; padding: 10px 12px; border-radius: 8px;
@@ -290,3 +293,78 @@ body.dragging-stack #dropzone { display: flex; }
   padding: 8px 16px; border-radius: 999px; background: rgba(10,13,20,.85);
   border: 1px solid rgba(255,255,255,.16); font-size: 13px; color: #fff; z-index: 8;
 }
+
+
+/* ---- the dressing room ---------------------------------------------- */
+.dress { display: flex; flex-direction: column; gap: 7px; max-height: 52vh; overflow-y: auto; padding-right: 4px; }
+.dress-card {
+  display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;
+  padding: 10px 12px; border-radius: 10px;
+  background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.1);
+}
+.dress-card:hover { background: rgba(255,255,255,.12); }
+.dress-card.active { border-color: #7ad6a0; background: rgba(122,214,160,.16); }
+.dress-card.active b::after { content: " \2713"; color: #7ad6a0; }
+.dress-card img { width: 34px; height: 34px; image-rendering: pixelated; flex: none; }
+.dress-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.dress-text b { font-size: 13px; }
+.dress-text span { font-size: 11px; line-height: 1.45; color: #8a94a8; }
+.dress-cd { margin-left: auto; font-size: 10px; letter-spacing: .06em; color: #7a8395; flex: none; }
+
+#outfit {
+  position: absolute; left: 14px; bottom: 18px; display: flex; align-items: center; gap: 8px;
+  padding: 7px 12px 7px 8px; border-radius: 999px; pointer-events: none;
+  background: rgba(10,13,20,.72); border: 1px solid rgba(122,214,160,.5);
+}
+#outfit.waiting { border-color: rgba(255,255,255,.16); opacity: .75; }
+#outfit img { width: 26px; height: 26px; image-rendering: pixelated; }
+.outfit-name { font-size: 12px; color: #e8ecf4; }
+.outfit-key {
+  font-size: 10px; letter-spacing: .06em; color: #0b0d12; background: #7ad6a0;
+  border-radius: 5px; padding: 2px 6px; font-variant-numeric: tabular-nums;
+}
+#outfit.waiting .outfit-key { background: rgba(255,255,255,.18); color: #cfd6e4; }
+
+/* The noise meter, which is the whole interface for the Deep Lands. */
+#noise {
+  position: absolute; left: 50%; top: 62px; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 10px; pointer-events: none;
+  padding: 6px 14px; border-radius: 999px;
+  background: rgba(6,12,16,.76); border: 1px solid rgba(86,224,216,.35);
+  font-size: 11px; letter-spacing: .06em; color: #bfe9e5;
+}
+#noiselabel { min-width: 68px; text-align: right; }
+.noisetrack {
+  display: block; width: 190px; height: 7px; border-radius: 999px; overflow: hidden;
+  background: rgba(255,255,255,.10);
+}
+#noisefill { display: block; height: 100%; width: 0; transition: width .12s linear, background .3s; }
+#noisefill.tier0 { background: #56e0d8; }
+#noisefill.tier1 { background: #e8c85c; }
+#noisefill.tier2 { background: #e88a44; }
+#noisefill.tier3 { background: #e04a56; }
+.noisehint { font-size: 10px; opacity: .55; }
+
+/* Hunger and thirst, under the hearts. */
+#needs { display: flex; gap: 10px; margin-top: 2px; }
+#needs span {
+  display: block; width: 92px; height: 7px; border-radius: 999px; overflow: hidden;
+  background: rgba(10,12,16,.72); border: 1px solid rgba(255,255,255,.18);
+  box-shadow: 0 1px 2px rgba(0,0,0,.7);
+}
+#needs span::after { content: ''; display: block; height: 100%; width: var(--v, 100%); transition: width .25s; }
+#foodbar::after { background: linear-gradient(90deg, #b4762f, #e0a94f); }
+#waterbar::after { background: linear-gradient(90deg, #2f74b4, #59b6e6); }
+#needs span.low::after { background: #d8483f; }
+
+/* A gun that connects ticks the crosshair red for a moment. */
+#crosshair.hit::before, #crosshair.hit::after { background: #ff5a4a; }
+
+/* The white-out from a blast. */
+#boomflash {
+  position: fixed; inset: 0; pointer-events: none; opacity: 0; z-index: 45;
+  background: radial-gradient(80% 60% at 50% 55%, rgba(255,250,230,.95), rgba(255,180,90,.55) 45%, rgba(120,40,10,.25));
+}
+
+#store-tabs { margin-bottom: 8px; }
+#store-list { max-height: 46vh; overflow-y: auto; }
