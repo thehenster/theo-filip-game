@@ -24,47 +24,73 @@ function paintTile(name, fn) {
       px((rnd() * TILE) | 0, (rnd() * TILE) | 0, r + v, g + v, b + v);
     }
   };
-  fn({ px, fill, specks, rnd, data });
+  // Minecraft's tiles are a handful of flat tones dropped in little clumps, not
+  // the smooth spray of noise a gradient gives you. Repeat a tone in the list to
+  // make it commoner; `clumps` then thickens the grain into two-by-two patches,
+  // which is what stops it reading as television static.
+  const tones = (list, clumps = 0) => {
+    const pick = () => list[(rnd() * list.length) | 0];
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+      const c = pick();
+      px(x, y, c[0], c[1], c[2]);
+    }
+    for (let i = 0; i < clumps; i++) {
+      const c = pick(), ox = (rnd() * (TILE - 1)) | 0, oy = (rnd() * (TILE - 1)) | 0;
+      for (let dy = 0; dy < 2; dy++) for (let dx = 0; dx < 2; dx++) px(ox + dx, oy + dy, c[0], c[1], c[2]);
+    }
+  };
+  fn({ px, fill, specks, tones, rnd, data });
   TILE_ID[name] = TILES.length;
   TILES.push(data);
   return TILE_ID[name];
 }
 
 function buildTextures() {
-  paintTile('grass_top', t => { t.fill(112, 165, 66, 16); t.specks(40, 96, 148, 54, 12); t.specks(20, 128, 182, 78, 10); });
+  paintTile('grass_top', t => {
+    t.tones([[124,175,79],[124,175,79],[124,175,79],[112,160,70],[112,160,70],[136,188,90],[136,188,90],[101,146,62]], 26);
+  });
 
-  paintTile('dirt', t => { t.fill(134, 96, 67, 14); t.specks(26, 112, 78, 52, 10); t.specks(14, 152, 114, 84, 8); });
+  paintTile('dirt', t => {
+    t.tones([[134,96,67],[134,96,67],[134,96,67],[122,86,59],[122,86,59],[148,108,77],[148,108,77],[110,77,53]], 22);
+  });
 
   paintTile('grass_side', t => {
-    t.fill(134, 96, 67, 14); t.specks(24, 112, 78, 52, 10);
+    // dirt, with the turf hanging raggedly over the top few rows
+    t.tones([[134,96,67],[134,96,67],[134,96,67],[122,86,59],[148,108,77],[110,77,53]], 18);
+    const green = [[124,175,79],[112,160,70],[136,188,90],[101,146,62]];
     for (let x = 0; x < TILE; x++) {
-      const h = 3 + (t.rnd() < 0.45 ? 1 : 0) + (t.rnd() < 0.18 ? 1 : 0);
-      for (let y = 0; y < h; y++) { const v = (t.rnd() - 0.5) * 22; t.px(x, y, 108 + v, 160 + v, 62 + v); }
-      if (t.rnd() < 0.4) { const v = (t.rnd() - 0.5) * 18; t.px(x, h, 100 + v, 150 + v, 58 + v); }
-    }
-  });
-
-  paintTile('stone', t => {
-    t.fill(126, 126, 126, 10); t.specks(30, 104, 104, 104, 8); t.specks(18, 146, 146, 146, 6);
-    let x = 2 + ((t.rnd() * 10) | 0);
-    for (let y = 3; y < 12; y++) { t.px(x, y, 104, 104, 104); if (t.rnd() < 0.5) x += t.rnd() < 0.5 ? 1 : -1; }
-  });
-
-  paintTile('cobblestone', t => {
-    t.fill(78, 78, 78, 6);
-    for (let i = 0; i < 9; i++) {
-      const w = 3 + ((t.rnd() * 3) | 0), h = 3 + ((t.rnd() * 3) | 0);
-      const ox = (t.rnd() * (TILE - w)) | 0, oy = (t.rnd() * (TILE - h)) | 0;
-      const base = 112 + t.rnd() * 34;
-      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-        const edge = (x === 0 || y === 0 || x === w - 1 || y === h - 1) ? -22 : 0;
-        const v = (t.rnd() - 0.5) * 14 + edge;
-        t.px(ox + x, oy + y, base + v, base + v, base + v);
+      const h = 3 + (t.rnd() < 0.5 ? 1 : 0) + (t.rnd() < 0.2 ? 1 : 0);
+      for (let y = 0; y < h; y++) {
+        const c = green[(t.rnd() * green.length) | 0];
+        t.px(x, y, c[0], c[1], c[2]);
       }
     }
   });
 
-  paintTile('sand', t => { t.fill(219, 205, 156, 9); t.specks(28, 200, 186, 138, 8); t.specks(12, 236, 226, 186, 6); });
+  paintTile('stone', t => {
+    t.tones([[125,125,125],[125,125,125],[125,125,125],[125,125,125],[116,116,116],[116,116,116],[136,136,136],[107,107,107]], 20);
+  });
+
+  paintTile('cobblestone', t => {
+    // Big pale stones on a dark mortar bed, each with a lighter cap and a dark
+    // underside, so the cluster reads as separate stones rather than as grain.
+    t.tones([[88,88,88],[88,88,88],[80,80,80]], 4);
+    const boxes = [[0,0,5,5],[6,0,5,4],[12,0,4,6],[0,6,4,5],[5,5,6,5],[12,7,4,4],
+                   [0,12,6,4],[7,11,5,5],[12,12,4,4]];
+    for (const [ox, oy, w, h] of boxes) {
+      const base = 128 + ((t.rnd() * 22) | 0);
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        let v = base + (t.rnd() < 0.3 ? -9 : 0);
+        if (y === 0) v = base + 16;                 // lit cap
+        if (y === h - 1 || x === w - 1) v = base - 36;   // shaded underside
+        t.px(ox + x, oy + y, v, v, v);
+      }
+    }
+  });
+
+  paintTile('sand', t => {
+    t.tones([[219,207,163],[219,207,163],[219,207,163],[219,207,163],[209,196,151],[209,196,151],[230,219,177],[199,186,142]], 18);
+  });
 
   paintTile('water', t => {
     for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
@@ -74,14 +100,18 @@ function buildTextures() {
   });
 
   paintTile('log_side', t => {
+    // bark read as vertical strips of a few flat browns, with darker splits
+    const bark = [[102,81,50],[102,81,50],[92,72,44],[113,90,57],[84,66,40]];
     for (let x = 0; x < TILE; x++) {
-      const shade = (t.rnd() - 0.5) * 26;
-      for (let y = 0; y < TILE; y++) { const v = shade + (t.rnd() - 0.5) * 10; t.px(x, y, 104 + v, 78 + v, 48 + v); }
+      const c = bark[(t.rnd() * bark.length) | 0];
+      for (let y = 0; y < TILE; y++) {
+        const d = t.rnd() < 0.16 ? -10 : 0;
+        t.px(x, y, c[0] + d, c[1] + d, c[2] + d);
+      }
     }
     for (let i = 0; i < 3; i++) {
-      const cx = (t.rnd() * TILE) | 0, cy = (t.rnd() * TILE) | 0;
-      for (let y = -1; y <= 1; y++) for (let x = -1; x <= 1; x++)
-        if (Math.abs(x) + Math.abs(y) < 2) t.px(cx + x, cy + y, 78, 56, 34);
+      const x = (t.rnd() * TILE) | 0;
+      for (let y = 0; y < TILE; y++) if (t.rnd() < 0.8) t.px(x, y, 74, 58, 35);
     }
   });
 
@@ -97,15 +127,8 @@ function buildTextures() {
   });
 
   paintTile('leaves', t => {
-    t.fill(58, 128, 44, 26);
-    for (let i = 0; i < 22; i++) {
-      const cx = (t.rnd() * TILE) | 0, cy = (t.rnd() * TILE) | 0, dark = t.rnd() < 0.5;
-      for (let y = 0; y < 2; y++) for (let x = 0; x < 2; x++) {
-        const v = (t.rnd() - 0.5) * 14;
-        if (dark) t.px(cx + x, cy + y, 38 + v, 96 + v, 30 + v);
-        else t.px(cx + x, cy + y, 82 + v, 156 + v, 60 + v);
-      }
-    }
+    t.tones([[62,132,48],[62,132,48],[52,114,40],[80,156,60],[44,98,34]], 40);
+    for (let i = 0; i < 16; i++) t.px((t.rnd() * TILE) | 0, (t.rnd() * TILE) | 0, 38, 88, 30);
   });
 
   paintTile('planks', t => {
@@ -146,7 +169,9 @@ function buildTextures() {
     }
   });
 
-  paintTile('snow', t => { t.fill(243, 247, 253, 6); t.specks(20, 226, 234, 246, 5); });
+  paintTile('snow', t => {
+    t.tones([[248,252,252],[248,252,252],[248,252,252],[238,243,246],[238,243,246],[229,236,240]], 14);
+  });
 
   paintTile('bedrock', t => {
     t.fill(84, 84, 84, 10);
@@ -157,21 +182,21 @@ function buildTextures() {
   });
 
   paintTile('gravel', t => {
-    t.fill(126, 122, 120, 12);
-    for (let i = 0; i < 18; i++) {
-      const cx = (t.rnd() * TILE) | 0, cy = (t.rnd() * TILE) | 0, g = 90 + t.rnd() * 80;
-      for (let y = 0; y < 2; y++) for (let x = 0; x < 2; x++) t.px(cx + x, cy + y, g, g * 0.97, g * 0.92);
-    }
+    t.tones([[131,127,124],[131,127,124],[118,114,111],[118,114,111],[150,146,142],[102,99,96],[160,155,150]], 30);
   });
 
+  // Ore is the stone tile with flat blobs set into it: two tones of the metal and
+  // a darker rim, which is what makes it read at a distance down a dark shaft.
   const ore = (name, r, g, b) => paintTile(name, t => {
-    t.fill(126, 126, 126, 10); t.specks(24, 104, 104, 104, 8);
+    t.tones([[125,125,125],[125,125,125],[125,125,125],[125,125,125],[116,116,116],[116,116,116],[136,136,136],[107,107,107]], 20);
+    const lit = [r + 26, g + 26, b + 26], rim = [r * 0.62, g * 0.62, b * 0.62];
     for (let i = 0; i < 5; i++) {
-      const cx = 2 + ((t.rnd() * 12) | 0), cy = 2 + ((t.rnd() * 12) | 0), s = t.rnd() < 0.5 ? 2 : 3;
-      for (let y = 0; y < s; y++) for (let x = 0; x < s; x++) {
-        if ((x === 0 && y === 0) || (x === s - 1 && y === s - 1)) continue;
-        const v = (t.rnd() - 0.5) * 26;
-        t.px(cx + x, cy + y, r + v, g + v, b + v);
+      const cx = 2 + ((t.rnd() * 12) | 0), cy = 2 + ((t.rnd() * 12) | 0), sz = t.rnd() < 0.5 ? 2 : 3;
+      for (let y = 0; y < sz; y++) for (let x = 0; x < sz; x++) {
+        if ((x === 0 && y === 0) || (x === sz - 1 && y === sz - 1)) continue;
+        const edge = x === sz - 1 || y === sz - 1;
+        const c = edge ? rim : (t.rnd() < 0.35 ? lit : [r, g, b]);
+        t.px(cx + x, cy + y, c[0], c[1], c[2]);
       }
     }
   });

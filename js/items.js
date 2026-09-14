@@ -308,6 +308,45 @@ const MASK_SHIELD = [
   '................',
 ];
 
+// A drumstick and a droplet, so hunger and thirst are counted out in tens the
+// way health and armour already are, instead of running down as strips.
+const MASK_FOOD = [
+  '................',
+  '................',
+  '.......MMM......',
+  '......MMMMM.....',
+  '.....MMMMMMM....',
+  '.....MMMMMMM....',
+  '....MMMMMMMM....',
+  '....MMMMMMM.....',
+  '.....MMMMM......',
+  '......BBB.......',
+  '.....BB.BB......',
+  '....BB...BB.....',
+  '...BB.....BB....',
+  '................',
+  '................',
+  '................',
+];
+const MASK_DROP = [
+  '................',
+  '................',
+  '.......W........',
+  '.......WW.......',
+  '......WWWW......',
+  '......WWWW......',
+  '.....WWWWWW.....',
+  '.....WWWWWW.....',
+  '....WWWWWWWW....',
+  '....WWWWWWWW....',
+  '....WWWWWWWW....',
+  '.....WWWWWW.....',
+  '......WWWW......',
+  '................',
+  '................',
+  '................',
+];
+
 // Heads-up sprites, painted the same way as everything else.
 let UI = {};
 function defineUiSprites() {
@@ -319,6 +358,16 @@ function defineUiSprites() {
       row.split('').map((ch, x) => (ch === 'H' && x >= 7 ? 'E' : ch)).join('')), { H: red, E: dark }),
     armour: spriteTile('ui_armour', MASK_SHIELD, { A: [206, 210, 220] }),
     armourEmpty: spriteTile('ui_armour_empty', MASK_SHIELD, { A: [56, 58, 66] }),
+    foodFull: spriteTile('ui_food_full', MASK_FOOD, { M: [186, 122, 54], B: [226, 222, 206] }),
+    foodEmpty: spriteTile('ui_food_empty', MASK_FOOD, { M: [52, 44, 38], B: [58, 56, 52] }),
+    foodHalf: spriteTile('ui_food_half', MASK_FOOD.map((row, y) =>
+      row.split('').map((ch, x) => (x >= 8 ? (ch === 'M' ? 'm' : ch === 'B' ? 'b' : ch) : ch)).join('')),
+      { M: [186, 122, 54], B: [226, 222, 206], m: [52, 44, 38], b: [58, 56, 52] }),
+    waterFull: spriteTile('ui_water_full', MASK_DROP, { W: [72, 150, 226] }),
+    waterEmpty: spriteTile('ui_water_empty', MASK_DROP, { W: [38, 48, 60] }),
+    waterHalf: spriteTile('ui_water_half', MASK_DROP.map(row =>
+      row.split('').map((ch, x) => (ch === 'W' && x >= 8 ? 'E' : ch)).join('')),
+      { W: [72, 150, 226], E: [38, 48, 60] }),
   };
 }
 

@@ -2,13 +2,16 @@
 // with per-vertex ambient occlusion and smoothed light.
 
 // +X, -X, +Y, -Y, +Z, -Z  (same order as DIRS and BLOCKS[].faces)
+// Minecraft shades a face by which way it points and nothing else: the top full,
+// the bottom half, north and south four fifths, east and west three fifths. It is
+// a surprising amount of what makes a block world read as that block world.
 const FACES = [
-  { n: [1, 0, 0], shade: 0.74, t: [1, 2], v: [[1,0,1],[1,0,0],[1,1,0],[1,1,1]] },
-  { n: [-1, 0, 0], shade: 0.74, t: [1, 2], v: [[0,0,0],[0,0,1],[0,1,1],[0,1,0]] },
+  { n: [1, 0, 0], shade: 0.60, t: [1, 2], v: [[1,0,1],[1,0,0],[1,1,0],[1,1,1]] },
+  { n: [-1, 0, 0], shade: 0.60, t: [1, 2], v: [[0,0,0],[0,0,1],[0,1,1],[0,1,0]] },
   { n: [0, 1, 0], shade: 1.00, t: [0, 2], v: [[0,1,1],[1,1,1],[1,1,0],[0,1,0]] },
   { n: [0, -1, 0], shade: 0.50, t: [0, 2], v: [[0,0,0],[1,0,0],[1,0,1],[0,0,1]] },
-  { n: [0, 0, 1], shade: 0.88, t: [0, 1], v: [[0,0,1],[1,0,1],[1,1,1],[0,1,1]] },
-  { n: [0, 0, -1], shade: 0.88, t: [0, 1], v: [[1,0,0],[0,0,0],[0,1,0],[1,1,0]] },
+  { n: [0, 0, 1], shade: 0.80, t: [0, 1], v: [[0,0,1],[1,0,1],[1,1,1],[0,1,1]] },
+  { n: [0, 0, -1], shade: 0.80, t: [0, 1], v: [[1,0,0],[0,0,0],[0,1,0],[1,1,0]] },
 ];
 const FACE_UV = [[0, 1], [1, 1], [1, 0], [0, 0]];
 const AO_SHADE = [0.42, 0.63, 0.82, 1.0];

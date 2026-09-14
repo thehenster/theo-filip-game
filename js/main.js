@@ -1509,17 +1509,17 @@ const Game = {
 
   // Drop hotbar entries for items you no longer carry.
   hotbarCheck() {
-    for (let i = 0; i < 9; i++) {
-      const id = this.hotbar[i];
-      if (isItem(id) && Inventory.count(id) <= 0) this.hotbar[i] = 0;
-    }
-    this.updateHotbarUI();
+    this.updateHotbarUI();                 // which is what drops the empty slots
     this.renderer.buildHandMesh(this.hotbar[this.slot]);
   },
 
   pickBlock() {
     const hit = this.player.raycast();
     if (!hit) return;
+    if (this.survivalRules() && Inventory.count(hit.id) <= 0) {
+      this.toast('You have no ' + thingName(hit.id).toLowerCase());
+      return;
+    }
     this.hotbar[this.slot] = hit.id;
     this.updateHotbarUI();
     this.renderer.buildHandMesh(hit.id);
@@ -1703,13 +1703,17 @@ const Game = {
     const sunset = clamp(1 - Math.abs(sun[1]) / 0.3, 0, 1) * dayN;
 
     const mix = (a1, b1, t) => [lerp(a1[0], b1[0], t), lerp(a1[1], b1[1], t), lerp(a1[2], b1[2], t)];
-    let zenith = mix([0.02, 0.03, 0.10], [0.30, 0.53, 0.92], dayN);
-    let horizon = mix([0.05, 0.07, 0.16], [0.70, 0.83, 0.98], dayN);
+    // Minecraft's overworld daylight sky, which is a good deal brighter and
+    // bluer than a physical one: about #70a1ff overhead, washing out to almost
+    // white where it meets the ground.
+    let zenith = mix([0.02, 0.03, 0.10], [0.44, 0.63, 1.00], dayN);
+    let horizon = mix([0.05, 0.07, 0.16], [0.75, 0.86, 1.00], dayN);
     horizon = mix(horizon, [0.98, 0.55, 0.28], sunset * 0.75);
     zenith = mix(zenith, [0.35, 0.30, 0.62], sunset * 0.35);
 
     let fogColor = mix(horizon, zenith, 0.25);
-    let fogRange = [this.viewDist * CX * 0.5, this.viewDist * CX * 0.98];
+    // and its fog, which sits right out at the edge rather than hazing the middle
+    let fogRange = [this.viewDist * CX * 0.72, this.viewDist * CX * 1.0];
     let ambient = 0.055, day = dayFactor, stars = clamp(1 - dayN * 1.6, 0, 1);
     if (this.dimension === 'end') {
       zenith = [0.04, 0.02, 0.07];
@@ -1842,6 +1846,17 @@ const Game = {
   },
   updateHotbarUI() {
     const el = document.getElementById('hotbar');
+    // Run out of something and it leaves the bar altogether rather than sitting
+    // there as a nought. Creative blocks are endless, so only the things you can
+    // actually run out of are ever dropped: every item, and in survival every block.
+    const wasHolding = this.hotbar[this.slot];
+    for (let i = 0; i < 9; i++) {
+      const id = this.hotbar[i];
+      if (id && (isItem(id) || this.survivalRules()) && Inventory.count(id) <= 0) this.hotbar[i] = 0;
+    }
+    if (wasHolding && this.hotbar[this.slot] !== wasHolding && this.renderer) {
+      this.renderer.buildHandMesh(this.hotbar[this.slot]);
+    }
     [...el.children].forEach((s, i) => {
       s.classList.toggle('active', i === this.slot);
       const id = this.hotbar[i];
@@ -1851,7 +1866,7 @@ const Game = {
       const badge = s.querySelector('.have');
       const showCount = id && (isItem(id) || this.survivalRules());
       badge.textContent = showCount ? Inventory.count(id) : '';
-      badge.classList.toggle('none', showCount && Inventory.count(id) === 0);
+      badge.classList.remove('none');
     });
     document.getElementById('slotnum').textContent = this.slot + 1;
     document.getElementById('blockname').textContent = this.hotbar[this.slot] ? thingName(this.hotbar[this.slot]) : '';
@@ -2237,9 +2252,21 @@ const Game = {
     const needs = document.getElementById('needs');
     if (needs) {
       needs.style.display = this.mode === 'creative' ? 'none' : 'flex';
+      // Counted out in tens, like the hearts: ten drumsticks and ten droplets,
+      // each of them worth two points and each able to show a half.
       const fb = document.getElementById('foodbar'), wb = document.getElementById('waterbar');
-      fb.style.setProperty('--v', (p.food / p.maxFood * 100).toFixed(0) + '%');
-      wb.style.setProperty('--v', (p.water / p.maxWater * 100).toFixed(0) + '%');
+      const pips = (el, value, max, full, half, empty) => {
+        el.innerHTML = '';
+        const scaled = value / max * 20;
+        for (let i = 0; i < 10; i++) {
+          const v = clamp(scaled - i * 2, 0, 2);
+          const img = document.createElement('img');
+          img.src = tileIcon(v >= 2 ? full : v >= 0.5 ? half : empty, 16);
+          el.appendChild(img);
+        }
+      };
+      pips(fb, p.food, p.maxFood, UI.foodFull, UI.foodHalf, UI.foodEmpty);
+      pips(wb, p.water, p.maxWater, UI.waterFull, UI.waterHalf, UI.waterEmpty);
       fb.classList.toggle('low', p.food <= 6);
       wb.classList.toggle('low', p.water <= 6);
       fb.title = 'Food'; wb.title = 'Water';

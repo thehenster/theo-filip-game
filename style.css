@@ -368,3 +368,146 @@ body.dragging-stack #dropzone { display: flex; }
 
 #store-tabs { margin-bottom: 8px; }
 #store-list { max-height: 46vh; overflow-y: auto; }
+
+/* ---------------------------------------------------------------------------
+   The inventory screen, dressed the way Minecraft dresses it. The layout was
+   already the right shape — armour and the doll and a two by two bench across
+   the top, twenty-seven slots under it, the hotbar under that — so this is the
+   skin and nothing else: a light stone panel, wells sunk into it with a hard
+   two-pixel bevel, and white counts with a dark drop shadow. Everything is
+   scoped to #inventory, so no other window changes.
+   --------------------------------------------------------------------------- */
+#inventory { backdrop-filter: none; background: rgba(0,0,0,.62); }
+
+#inventory .panel.mc-window {
+  background: #c6c6c6;
+  border: 0; border-radius: 0;
+  padding: 16px 18px 20px;
+  color: #404040;
+  box-shadow: inset 4px 4px 0 #fff, inset -4px -4px 0 #555, 0 18px 60px rgba(0,0,0,.6);
+}
+
+/* text on stone: dark, close-set, with Minecraft's one-pixel shadow on nothing
+   but the numbers — labels read flat, the way they do in the real screen */
+#inventory h2, #inventory h3, #inventory .mc-label {
+  color: #404040; text-transform: none; letter-spacing: 0; text-shadow: none;
+}
+#inventory h2 { font-size: 17px; }
+#inventory .mc-label { font-size: 13px; font-weight: 700; margin: 14px 0 6px; }
+#inventory .hint, #inventory .sub, #inventory .sub2, #inventory .mc-note { color: #555; }
+#inventory .mc-head { margin-bottom: 12px; }
+
+/* a slot is a well sunk into the stone: dark at the top left, white at the
+   bottom right, and square */
+#inventory .mcslot {
+  width: 44px; height: 44px;
+  background: #8b8b8b;
+  border: 0; border-radius: 0;
+  box-shadow: inset 3px 3px 0 #373737, inset -3px -3px 0 #fff;
+}
+#inventory .mcslot:hover { background: #b4b4b4; }
+#inventory .mcslot.empty, #inventory .mcslot.empty:hover { background: #8b8b8b; }
+#inventory .mcslot img { width: 36px; height: 36px; }
+#inventory .mcslot .n {
+  right: 4px; bottom: 2px; font-size: 13px; font-weight: 700;
+  color: #fff; text-shadow: 2px 2px 0 #3f3f3f;
+}
+#inventory .mcslot .ph { color: #6d6d6d; font-size: 9px; text-shadow: none; }
+#inventory .mcslot.selected,
+#inventory .mcslot.current {
+  background: #b4b4b4;
+  box-shadow: inset 3px 3px 0 #373737, inset -3px -3px 0 #fff, inset 0 0 0 3px #fff;
+  border-color: transparent;
+}
+#inventory .mcslot.just-made { box-shadow: inset 3px 3px 0 #373737, inset -3px -3px 0 #fff, inset 0 0 0 3px #ffd83d; }
+
+/* slots sit two pixels apart, and the hotbar is the same row set a little below */
+#inventory .mc-grid { grid-template-columns: repeat(9, 44px); gap: 2px; }
+#inventory .mc-hotbar { background: none; box-shadow: none; padding: 0; margin-top: 12px; }
+#inventory .mc-top { gap: 26px; }
+#inventory .mc-bench { gap: 10px; }
+#inventory .craft-arrow { color: #5a5a5a; font-size: 24px; }
+#inventory .mcslot.out { width: 56px; height: 56px; }
+#inventory .mcslot.out img { width: 44px; height: 44px; }
+#inventory #armour-slots, #inventory #craft-grid { gap: 2px; }
+
+/* the paper doll, in the same sunken stone */
+#inventory .doll-part {
+  background: #8b8b8b; border: 0; border-radius: 0;
+  box-shadow: inset 2px 2px 0 #373737, inset -2px -2px 0 #fff;
+}
+#inventory .doll-part.worn { background: #7a9b6a; }
+
+/* the recipe book down the side, and the creative tabs, as stone buttons */
+#inventory .mc-book h3 { font-size: 13px; font-weight: 700; }
+#inventory .recipes { padding-right: 6px; }
+#inventory .recipe {
+  border-radius: 0; color: #2f2f2f;
+  background: #b4b4b4; box-shadow: inset 2px 2px 0 #fff, inset -2px -2px 0 #5c5c5c;
+}
+#inventory .recipe:hover { background: #c9c9c9; }
+#inventory .recipe .mini i { border-radius: 0; background: #8b8b8b; }
+#inventory .chip, #inventory button {
+  border-radius: 0; color: #2f2f2f; border: 0;
+  background: #b4b4b4; box-shadow: inset 2px 2px 0 #fff, inset -2px -2px 0 #5c5c5c;
+}
+#inventory .chip:hover, #inventory button:hover { background: #c9c9c9; color: #1d1d1d; }
+#inventory .chip.active { background: #7a9b6a; color: #fff; }
+#inventory #recipe-filter {
+  border-radius: 0; color: #2f2f2f; border: 0;
+  background: #8b8b8b; box-shadow: inset 2px 2px 0 #373737, inset -2px -2px 0 #fff;
+}
+#inventory #recipe-filter::placeholder { color: #4a4a4a; }
+#inventory .mc-scroll { padding-right: 6px; }
+
+/* the stack you are dragging, in the same dress */
+.drag-ghost {
+  border-radius: 0; border: 0;
+  background: #b4b4b4; box-shadow: inset 2px 2px 0 #fff, inset -2px -2px 0 #5c5c5c;
+}
+
+/* ---------------------------------------------------------------------------
+   The heads-up display, dressed the way Minecraft dresses it: a flat dark
+   hotbar frame with square slots and a white box round the one you are holding,
+   a thin cross in the middle, and the needs counted out in pips rather than
+   drawn as strips.
+   --------------------------------------------------------------------------- */
+#hotbar {
+  gap: 0; padding: 2px; border-radius: 0;
+  background: rgba(16,16,16,.62);
+  border: 2px solid rgba(0,0,0,.55);
+  backdrop-filter: none;
+}
+.slot {
+  width: 48px; height: 48px; border-radius: 0;
+  border: 2px solid rgba(255,255,255,.06);
+  background: rgba(255,255,255,.045);
+}
+.slot img { border-radius: 0; width: 38px; height: 38px; }
+/* the selection box sits proud of the bar, the way Minecraft's does */
+.slot.active {
+  transform: none;
+  border-color: #fff;
+  background: rgba(255,255,255,.14);
+  box-shadow: 0 0 0 2px rgba(255,255,255,.85);
+  z-index: 1;
+}
+.slot .num { opacity: .4; }
+.slot .have { text-shadow: 2px 2px 0 #3f3f3f; font-weight: 700; }
+
+/* a 9x9 cross of 1px arms, not a 22px plus sign */
+#crosshair { width: 18px; height: 18px; margin: -9px 0 0 -9px; }
+#crosshair::before { left: 8px; top: 0; width: 2px; height: 18px; }
+#crosshair::after { top: 8px; left: 0; height: 2px; width: 18px; }
+
+/* drumsticks and droplets instead of two sliding strips */
+#needs { gap: 14px; margin-top: 3px; }
+#needs span {
+  display: flex; gap: 0; width: auto; height: auto;
+  background: none; border: 0; border-radius: 0; box-shadow: none; overflow: visible;
+}
+#needs span::after { content: none; }
+#needs img { width: 15px; height: 15px; image-rendering: pixelated; display: block; }
+#needs span.low { animation: needs-flash 1s steps(2) infinite; }
+@keyframes needs-flash { 50% { opacity: .45; } }
+@media (prefers-reduced-motion: reduce) { #needs span.low { animation: none; } }
